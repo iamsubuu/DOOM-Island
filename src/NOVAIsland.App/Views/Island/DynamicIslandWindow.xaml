@@ -12,9 +12,6 @@
             VerticalAlignment="Top"
             PointerEntered="OnPillPointerEntered"
             PointerExited="OnPillPointerExited"
-            PointerPressed="OnPillPointerPressed"
-            PointerMoved="OnPillPointerMoved"
-            PointerReleased="OnPillPointerReleased"
             DoubleTapped="OnPillDoubleTapped">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />

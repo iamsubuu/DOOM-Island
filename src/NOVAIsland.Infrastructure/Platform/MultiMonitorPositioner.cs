@@ -39,7 +39,7 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
     }
 
     public void ApplyIslandPosition(PositionSettings settings, int widthDip, int heightDip) =>
-        ApplyIslandPosition(settings, widthDip, heightDip, flushTopEdge: false);
+        ApplyIslandPosition(settings, widthDip, heightDip, flushTopEdge: true);
 
     public void ApplyIslandPosition(PositionSettings settings, int widthDip, int heightDip, bool flushTopEdge)
     {
@@ -51,37 +51,13 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
         var bounds = ResolveTargetMonitorRect(settings, out var scale);
         var widthPx = (int)Math.Round(widthDip * scale);
         var heightPx = (int)Math.Round(heightDip * scale);
-        var padX = (int)Math.Round(24 * scale);
-        var topMargin = flushTopEdge ? 0 : (int)Math.Round(14 * scale);
-        var topOffset = (int)Math.Round(Math.Clamp(settings.CustomY, 0, 180) * scale);
 
-        int x;
-        int y;
-
-        switch (settings.ScreenPosition)
-        {
-            case ScreenPosition.TopLeft:
-                x = bounds.Left + padX;
-                y = bounds.Top + topMargin;
-                break;
-            case ScreenPosition.TopRight:
-                x = bounds.Right - widthPx - padX;
-                y = bounds.Top + topMargin;
-                break;
-            case ScreenPosition.Custom:
-                var pct = Math.Clamp(settings.CustomX, 12, 88) / 100.0;
-                x = (int)Math.Round(bounds.Left + bounds.Width * pct - widthPx / 2.0);
-                y = bounds.Top + (flushTopEdge && settings.CustomY <= 14 ? 0 : topOffset);
-                break;
-            default: // TopCenter
-                x = bounds.Left + (bounds.Width - widthPx) / 2;
-                y = bounds.Top + topMargin;
-                break;
-        }
+        // Static top-center bezel anchor
+        var x = bounds.Left + (bounds.Width - widthPx) / 2;
+        var y = bounds.Top;
 
         x = Math.Clamp(x, bounds.Left + 8, Math.Max(bounds.Left + 8, bounds.Right - widthPx - 8));
-        var minY = flushTopEdge ? bounds.Top : bounds.Top + 4;
-        y = Math.Clamp(y, minY, Math.Max(minY, bounds.Bottom - heightPx - 8));
+        y = Math.Clamp(y, bounds.Top, Math.Max(bounds.Top, bounds.Bottom - heightPx - 8));
 
         Win32Interop.SetWindowPos(
             _islandHwnd,

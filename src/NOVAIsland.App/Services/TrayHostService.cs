@@ -26,6 +26,11 @@ public sealed class TrayHostService : ITrayService, IDisposable
             return;
         }
 
+        if (FindWindowW("Shell_TrayWnd", null) == IntPtr.Zero)
+        {
+            return;
+        }
+
         _hIcon = CreateGeneratedTrayIcon();
         var flyout = new MenuFlyout();
 
@@ -40,17 +45,38 @@ public sealed class TrayHostService : ITrayService, IDisposable
         flyout.Items.Add(new MenuFlyoutSeparator());
         AddItem(flyout, "Exit", () => ExitRequested?.Invoke(this, EventArgs.Empty));
 
-        _trayIcon = new TaskbarIcon
+        var deterministicId = H.NotifyIcon.Core.TrayIcon.CreateUniqueGuidFromString(
+            $"DOOMIsland::{Environment.ProcessPath ?? appName}");
+
+        if (!TryCreateTrayIcon(deterministicId, appName, flyout) &&
+            !TryCreateTrayIcon(Guid.NewGuid(), appName, flyout))
         {
+            DisposeTray();
+        }
+    }
+
+    private bool TryCreateTrayIcon(Guid id, string appName, MenuFlyout flyout)
+    {
+        var candidate = new TaskbarIcon
+        {
+            Id = id,
             ToolTipText = appName,
             ContextFlyout = flyout,
-            ContextMenuMode = ContextMenuMode.SecondWindow
+            ContextMenuMode = ContextMenuMode.PopupMenu,
+            Icon = _hIcon != IntPtr.Zero ? System.Drawing.Icon.FromHandle(_hIcon) : null
         };
-        if (_hIcon != IntPtr.Zero)
+
+        try
         {
-            _trayIcon.UpdateIcon(System.Drawing.Icon.FromHandle(_hIcon));
+            candidate.ForceCreate(enablesEfficiencyMode: false);
+            _trayIcon = candidate;
+            return true;
         }
-        _trayIcon.ForceCreate();
+        catch (InvalidOperationException)
+        {
+            candidate.Dispose();
+            return false;
+        }
     }
 
     public void UpdateTooltip(string text)
@@ -129,4 +155,5 @@ public sealed class TrayHostService : ITrayService, IDisposable
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr ho);
     [DllImport("user32.dll")] private static extern IntPtr CreateIconIndirect(ref ICONINFO piconinfo);
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr hIcon);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string lpClassName, string? lpWindowName);
 }

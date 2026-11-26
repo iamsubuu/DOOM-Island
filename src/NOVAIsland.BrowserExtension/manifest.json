@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DOOM Island",
-  "version": "2.4.0",
+  "version": "2.3.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArVuO8WiL2nZsaxnHv5ZS8HxAVi1e255RYGQFLSuJiWOviyskk77YKZQqxAdRnDZZx6prwweA1k8d7mRLmJO7RdqFkhq1yzIogkRHIUrYOHQt2E9CD32Z+jLVk2Pd4DRoD86FqQokw4U+rRRXoKVCGcCts4B7ZsyrPA0i0gfg8oeKWL0IxqT+a92G4F6bjY9W49y/GEmZpOattIsqEIGgxtA/YRuNu+hkeyPewaWonn/qga3050IOLah0z+QGjqBDq2MqtLbrsCnTkwDYvYmWsZEfVfD6NoF7C1nixzuC0Ulzsjay/i2jnFhcwJB0xdi7yjq6LWBcJQ9V6XnKCFppBwIDAQAB",
   "description": "Detects active browser media (Media Session & HTML5 audio/video) and connects to the native DOOM Island desktop overlay via Native Messaging.",
   "permissions": [
@@ -29,11 +29,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ]
 }
-

@@ -15,7 +15,7 @@ public sealed class AppConstantsTests
     {
         Assert.Equal("DOOM Island", AppConstants.DefaultAppName);
         Assert.Equal("DOOM", AppConstants.DefaultShortName);
-        Assert.Equal("2.4.0", AppConstants.AppVersion);
+        Assert.Equal("2.3.1", AppConstants.AppVersion);
         Assert.Equal("com.doomisland.host", AppConstants.NativeMessagingHostName);
 
         var settings = new AppSettings();

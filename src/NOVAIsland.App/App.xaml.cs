@@ -178,7 +178,14 @@ public partial class App : Application
             await settingsVm.SaveAsync();
         });
         tray.ExitRequested += (_, _) => Shutdown();
-        tray.Initialize(settingsVm.ResolvedAppName);
+        try
+        {
+            tray.Initialize(settingsVm.ResolvedAppName);
+        }
+        catch (Exception ex)
+        {
+            TryWriteCrashLog(ex);
+        }
 
         var hotkeys = sp.GetRequiredService<IHotkeyService>();
         hotkeys.ShortcutTriggered += (_, action) => _islandWindow.DispatcherQueue.TryEnqueue(async () =>

@@ -43,11 +43,11 @@ Copy-Item -Path (Join-Path $PSScriptRoot "Install-DOOMIsland.ps1") -Destination 
 Copy-Item -Path (Join-Path $PSScriptRoot "Uninstall-DOOMIsland.ps1") -Destination $publishRoot -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "Uninstall-DOOMIsland.ps1") -Destination $appOut -Force
 
-$bundleZip = Join-Path $installerOut "DOOMIsland-Win64-Portable-v2.4.0.zip"
+$bundleZip = Join-Path $installerOut "DOOMIsland-Win64-Portable-v2.3.1.zip"
 if (Test-Path $bundleZip) { Remove-Item $bundleZip -Force }
 Compress-Archive -Path (Join-Path $publishRoot "*") -DestinationPath $bundleZip
 
-Write-Host "5/6 Building embedded payload & publishing standalone DOOMIsland-Setup-x64-v2.4.0.exe..."
+Write-Host "5/6 Building embedded payload & publishing standalone DOOMIsland-Setup-x64-v2.3.1.exe..."
 $payloadZip = Join-Path $publishRoot "DOOMIsland-AppPayload.zip"
 if (Test-Path $payloadZip) { Remove-Item $payloadZip -Force }
 Compress-Archive -Path (Join-Path $appOut "*") -DestinationPath $payloadZip -CompressionLevel Optimal
@@ -57,11 +57,11 @@ $setupBuildDir = Join-Path $publishRoot "setup_bin"
     -c Release -r win-x64 --self-contained true -o $setupBuildDir
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$setupExeSrc = Join-Path $setupBuildDir "DOOMIsland-Setup-x64-v2.4.0.exe"
-$setupExeDst = Join-Path $installerOut "DOOMIsland-Setup-x64-v2.4.0.exe"
+$setupExeSrc = Join-Path $setupBuildDir "DOOMIsland-Setup-x64-v2.3.1.exe"
+$setupExeDst = Join-Path $installerOut "DOOMIsland-Setup-x64-v2.3.1.exe"
 Copy-Item -Path $setupExeSrc -Destination $setupExeDst -Force
 
-Write-Host "6/6 Signing DOOMIsland-Setup-x64-v2.4.0.exe..."
+Write-Host "6/6 Signing DOOMIsland-Setup-x64-v2.3.1.exe..."
 & $signScript `
     -TargetPaths @($setupExeDst) `
     -PfxPath $PfxPath -PfxPassword $PfxPassword -Thumbprint $Thumbprint -PublicCertOut $publicCertOut
@@ -70,7 +70,7 @@ $iscc = Get-Command "iscc.exe" -ErrorAction SilentlyContinue
 if ($iscc) {
     Write-Host "Optional: Building & signing Inno Setup EXE installer..."
     & $iscc.Source (Join-Path $PSScriptRoot "DOOMIsland.iss")
-    $innoExe = Join-Path $installerOut "DOOMIsland-Setup-Inno-x64-v2.4.0.exe"
+    $innoExe = Join-Path $installerOut "DOOMIsland-Setup-Inno-x64-v2.3.1.exe"
     if (Test-Path $innoExe) {
         & $signScript -TargetPaths @($innoExe) -PfxPath $PfxPath -PfxPassword $PfxPassword -Thumbprint $Thumbprint
     }

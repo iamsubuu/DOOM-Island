@@ -45,7 +45,6 @@
                         </StackPanel>
 
                         <StackPanel x:Name="HeroActionsPanel" Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <Button Content="Positioning" Click="OnOpenPositionClick" Padding="12,8" CornerRadius="8" />
                             <Button Content="Customize Island" Click="OnOpenAppearanceClick" Padding="14,8" CornerRadius="8" Background="{StaticResource NovaAccentBrush}" Foreground="#FF06100A" FontWeight="SemiBold" />
                         </StackPanel>
                     </Grid>

@@ -57,7 +57,7 @@ internal static class Program
 internal static class InstallerEngine
 {
     private const string AppName = "DOOM Island";
-    private const string AppVersion = "2.4.0";
+    private const string AppVersion = "2.3.1";
     private const string NativeHostName = "com.doomisland.host";
     private const string DefaultExtensionId = "amplhmapoeandecddkchambamhafdcgp";
 

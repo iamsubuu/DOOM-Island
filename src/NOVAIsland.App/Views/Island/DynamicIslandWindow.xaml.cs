@@ -26,9 +26,6 @@ public sealed partial class DynamicIslandWindow : Window
     private IntPtr _hwnd;
     private Win32Interop.WndProcDelegate? _subProc;
     private IntPtr _prevWndProc;
-    private bool _isDragging;
-    private Win32Interop.POINT _dragStartScreen;
-    private bool _dragMoved;
     private string? _lastCompactArtUri;
     private bool _wasExpanded;
     private CancellationTokenSource? _retractCts;
@@ -61,7 +58,7 @@ public sealed partial class DynamicIslandWindow : Window
         _hoverCloseTimer.Tick += async (_, _) =>
         {
             _hoverCloseTimer.Stop();
-            if (_island.IsExpanded && !_island.IsHovered && !_isDragging && !IsTextBoxFocused())
+            if (_island.IsExpanded && !_island.IsHovered && !IsTextBoxFocused())
             {
                 await BeginSmoothCollapseAsync();
             }
@@ -101,18 +98,16 @@ public sealed partial class DynamicIslandWindow : Window
         _hwnd = WindowNative.GetWindowHandle(this);
         _positioner.AttachWindow(_hwnd);
 
-        var style = Win32Interop.GetWindowLongPtr(_hwnd, Win32Interop.GWL_STYLE).ToInt64();
-        style &= ~(Win32Interop.WS_CAPTION | Win32Interop.WS_THICKFRAME | Win32Interop.WS_MINIMIZEBOX | Win32Interop.WS_MAXIMIZEBOX | Win32Interop.WS_SYSMENU);
-        style |= Win32Interop.WS_POPUP;
-        Win32Interop.SetWindowLongPtr(_hwnd, Win32Interop.GWL_STYLE, new IntPtr(style));
-
-        var exStyle = Win32Interop.GetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE).ToInt64();
-        exStyle |= Win32Interop.WS_EX_LAYERED | Win32Interop.WS_EX_TOOLWINDOW | Win32Interop.WS_EX_NOACTIVATE;
-        Win32Interop.SetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE, new IntPtr(exStyle));
-
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.IsShownInSwitchers = false;
+        try
+        {
+            appWindow.IsShownInSwitchers = false;
+        }
+        catch
+        {
+            // WS_EX_TOOLWINDOW hides the window from switchers even if SetShownInSwitchers is unsupported.
+        }
 
         if (appWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -122,6 +117,15 @@ public sealed partial class DynamicIslandWindow : Window
             presenter.IsResizable = false;
             presenter.IsAlwaysOnTop = _settings.Settings.General.AlwaysOnTop;
         }
+
+        var style = Win32Interop.GetWindowLongPtr(_hwnd, Win32Interop.GWL_STYLE).ToInt64();
+        style &= ~(Win32Interop.WS_CAPTION | Win32Interop.WS_THICKFRAME | Win32Interop.WS_MINIMIZEBOX | Win32Interop.WS_MAXIMIZEBOX | Win32Interop.WS_SYSMENU);
+        style |= Win32Interop.WS_POPUP;
+        Win32Interop.SetWindowLongPtr(_hwnd, Win32Interop.GWL_STYLE, new IntPtr(style));
+
+        var exStyle = Win32Interop.GetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE).ToInt64();
+        exStyle |= Win32Interop.WS_EX_LAYERED | Win32Interop.WS_EX_TOOLWINDOW | Win32Interop.WS_EX_NOACTIVATE;
+        Win32Interop.SetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE, new IntPtr(exStyle));
 
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
@@ -481,71 +485,8 @@ public sealed partial class DynamicIslandWindow : Window
                FocusManager.GetFocusedElement(RootHost.XamlRoot) is TextBox;
     }
 
-    private void OnPillPointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (IsInteractiveControl(e.OriginalSource as DependencyObject))
-        {
-            return;
-        }
-
-        if (e.GetCurrentPoint(NotchAssembly).Properties.IsLeftButtonPressed)
-        {
-            _isDragging = true;
-            _dragMoved = false;
-            Win32Interop.GetCursorPos(out _dragStartScreen);
-        }
-    }
-
-    private void OnPillPointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_isDragging) return;
-        Win32Interop.GetCursorPos(out var current);
-        var dx = Math.Abs(current.X - _dragStartScreen.X);
-        var dy = Math.Abs(current.Y - _dragStartScreen.Y);
-        if (!_dragMoved && dx < 6 && dy < 6) return;
-
-        if (!_dragMoved)
-        {
-            _dragMoved = true;
-            NotchAssembly.CapturePointer(e.Pointer);
-        }
-        var (pctX, pxY, _) = _positioner.ComputeScreenPointToCustomPercent(current.X, current.Y, _settings.Settings.Position);
-        _settings.Settings.Position.ScreenPosition = ScreenPosition.Custom;
-        _settings.Settings.Position.CustomX = pctX;
-        _settings.Settings.Position.CustomY = pxY;
-        ApplySettingsAndReposition();
-    }
-
-    private async void OnPillPointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_isDragging) return;
-        _isDragging = false;
-        if (_dragMoved)
-        {
-            NotchAssembly.ReleasePointerCapture(e.Pointer);
-            await _settings.SaveAsync();
-        }
-    }
-
-    private static bool IsInteractiveControl(DependencyObject? source)
-    {
-        while (source is not null)
-        {
-            if (source is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase
-                or Slider
-                or TextBox
-                or Microsoft.UI.Xaml.Controls.Primitives.ScrollBar)
-            {
-                return true;
-            }
-            source = VisualTreeHelper.GetParent(source);
-        }
-        return false;
-    }
-
     private void OnCompactTapped(object sender, TappedRoutedEventArgs e)
     {
-        if (_dragMoved) return;
         _island.SetMode(_island.Music.HasActiveMedia ? IslandMode.Expanded : IslandMode.System);
     }
 

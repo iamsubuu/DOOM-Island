@@ -214,9 +214,6 @@ public sealed partial class DashboardWindow : Window
         }
     }
 
-    private void OnOpenPositionClick(object sender, RoutedEventArgs e) =>
-        OpenSettingsSectionRequested?.Invoke(this, SettingsSectionId.Position);
-
     private void OnOpenAppearanceClick(object sender, RoutedEventArgs e) =>
         OpenSettingsSectionRequested?.Invoke(this, SettingsSectionId.Appearance);
 

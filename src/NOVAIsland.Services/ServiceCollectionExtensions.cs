@@ -20,7 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ILyricsService, LrclibLyricsService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(8);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("DOOMIsland/2.4 (+https://github.com/doom-island)");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("DOOMIsland/2.3.1 (+https://github.com/doom-island)");
         });
 
         // Core MVVM ViewModels

@@ -28,7 +28,6 @@ public sealed partial class SettingsWindow : Window
     [
         new(SettingsSectionId.General, "General", "Brand name, stealth top bar, hover open, startup, and collapse behavior", ["name", "stealth", "hover", "startup", "top", "collapse", "double"]),
         new(SettingsSectionId.Appearance, "Appearance", "Dark/Light/System theme, accent color, font, dimensions & live preview", ["theme", "accent", "font", "width", "height", "radius", "opacity", "black"]),
-        new(SettingsSectionId.Position, "Position & Display", "Top center, left, right, custom X/Y, monitor & interactive canvas", ["position", "monitor", "custom", "x", "y"]),
         new(SettingsSectionId.Animation, "Animation", "Composition spring presets, speed, hover scale, bounce & breathing", ["animation", "spring", "fluid", "snappy", "silk", "motion"]),
         new(SettingsSectionId.Music, "Music", "Album artwork, WASAPI equalizer, progress hairline & title scrolling", ["music", "equalizer", "artwork", "progress"]),
         new(SettingsSectionId.BrowserIntegration, "Browser Integration", "Automatic Chrome/Edge/Opera media + optional MV3 Extension", ["browser", "chrome", "edge", "opera", "extension", "native"]),
@@ -239,16 +238,6 @@ public sealed partial class SettingsWindow : Window
                 AddSliderRow("Corner radius (px)", 14, 32, s.Appearance.CornerRadius, v => s.Appearance.CornerRadius = v);
                 AddSliderRow("Surface opacity (%)", 80, 100, s.Appearance.Opacity, v => s.Appearance.Opacity = v);
                 AddSliderRow("Animation speed (x10)", 5, 18, s.Appearance.AnimationSpeed * 10, v => s.Appearance.AnimationSpeed = Math.Round(v / 10.0, 1));
-                break;
-
-            case SettingsSectionId.Position:
-                AddPositionPreview(s.Position);
-                AddButtonRow("Reset Position", "Return island to Top Center.", "Reset", async () => { await _settingsVm.ResetPositionAsync(); RenderActiveSection(); });
-                AddEnumRow("Screen position preset", Enum.GetValues<ScreenPosition>(), s.Position.ScreenPosition, v => s.Position.ScreenPosition = v);
-                AddSliderRow("Custom horizontal X (%)", 12, 88, s.Position.CustomX, v => { s.Position.ScreenPosition = ScreenPosition.Custom; s.Position.CustomX = v; });
-                AddSliderRow("Custom vertical Y (px)", 0, 140, s.Position.CustomY, v => { s.Position.ScreenPosition = ScreenPosition.Custom; s.Position.CustomY = v; });
-                AddMonitorSelector(s.Position);
-                AddToggleRow("Remember last position", "Persist custom X/Y across launches.", s.Position.RememberLastPosition, v => s.Position.RememberLastPosition = v);
                 break;
 
             case SettingsSectionId.Animation:
@@ -588,58 +577,6 @@ public sealed partial class SettingsWindow : Window
             BorderThickness = new Thickness(1),
             Child = pill
         });
-    }
-
-    private void AddPositionPreview(PositionSettings pos)
-    {
-        var canvas = new Border
-        {
-            Height = 120,
-            CornerRadius = new CornerRadius(12),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Background = new SolidColorBrush(Color.FromArgb(255, 10, 12, 18)),
-            BorderBrush = (Brush)Application.Current.Resources["WindowBorderBrush"],
-            BorderThickness = new Thickness(1),
-            Child = new TextBlock
-            {
-                Text = $"Preview Anchor: {pos.ScreenPosition} (X: {pos.CustomX:0}% · Y: {pos.CustomY:0}px) — Click to position",
-                Foreground = new SolidColorBrush(Color.FromArgb(255, 161, 161, 170)),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap,
-                FontSize = 12,
-                Margin = new Thickness(12, 0, 12, 0)
-            }
-        };
-
-        canvas.PointerPressed += async (_, e) =>
-        {
-            var pt = e.GetCurrentPoint(canvas).Position;
-            pos.ScreenPosition = ScreenPosition.Custom;
-            pos.CustomX = Math.Clamp(Math.Round(pt.X / Math.Max(1, canvas.ActualWidth) * 100), 12, 88);
-            pos.CustomY = Math.Clamp(Math.Round(pt.Y / Math.Max(1, canvas.ActualHeight) * 140), 0, 140);
-            await _settingsVm.SaveAsync();
-            RenderActiveSection();
-        };
-        SectionContentHost.Children.Add(canvas);
-    }
-
-    private void AddMonitorSelector(PositionSettings pos)
-    {
-        var combo = new ComboBox
-        {
-            Width = StandardControlWidth,
-            HorizontalAlignment = HorizontalAlignment.Right
-        };
-        combo.Items.Add("Primary");
-        combo.Items.Add("Follow active cursor monitor");
-        foreach (var m in _positioner.GetMonitors()) combo.Items.Add(m.Id);
-        combo.SelectedItem = combo.Items.Contains(pos.Monitor) ? pos.Monitor : "Primary";
-        combo.SelectionChanged += async (_, _) =>
-        {
-            if (combo.SelectedItem is string val) { pos.Monitor = val; await _settingsVm.SaveAsync(); }
-        };
-        AddSettingRow("Target monitor", "Select display or follow cursor across monitors.", combo);
     }
 
     private void AddExcludedAppsManager(ClipboardSettings clip)

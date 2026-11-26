@@ -1,7 +1,7 @@
 # DOOM Island — Development Status
 
 > **Last Updated:** 2026-11-26  
-> **Version:** `2.4.0` (`DOOMIsland.exe`)  
+> **Version:** `2.3.1` (`DOOMIsland.exe`)  
 > **Current Phase:** All Stages (1–16) Implemented, Polished & Verified  
 > **Policy:** A feature is listed under **Completed Features** ONLY when its native WinUI 3 / C# / Extension implementation is genuinely implemented, integrated, and verified.
 
@@ -22,7 +22,7 @@
   - `TimerViewModel` & `TimerPanelView` (Pomodoro, Countdown, Stopwatch with laps, progress ring, background 100ms/1s ticks).
 - **Dashboard Hub & 14-Section Settings (`Stage 12`):** `DashboardWindow` and responsive searchable `SettingsWindow` (adapts between wide sidebar and compact dropdown layout with uniform control alignment) covering all 14 sections (`General` through `About`), live Appearance & Position previews, real SQLite/disk MB accounting, JSON export, and factory reset.
 - **Tray, Startup, Global Hotkeys & Lock Masking (`Stage 13`):** `H.NotifyIcon.WinUI` tray icon + menu, `StartupRegistrationService`, `GlobalHotkeyService` (`RegisterHotKey`), and `SessionLockWatcher` (`WTSRegisterSessionNotification`).
-- **Security Audit & Packaging (`Stage 14–16`):** Security review documented in `docs/security-review.md`; Authenticode-signed standalone native Windows installer (`DOOMIsland-Setup-x64-v2.4.0.exe`), Release self-contained `win-x64` artifacts (`DOOMIsland-Win64-Portable-v2.4.0.zip`, `DOOMIsland-BrowserExtension-MV3.zip`), `Install-DOOMIsland.ps1`, `Uninstall-DOOMIsland.ps1`, `Sign-Artifacts.ps1`, and `DOOMIsland.iss` created and verified end-to-end.
+- **Security Audit & Packaging (`Stage 14–16`):** Security review documented in `docs/security-review.md`; Authenticode-signed standalone native Windows installer (`DOOMIsland-Setup-x64-v2.3.1.exe`), Release self-contained `win-x64` artifacts (`DOOMIsland-Win64-Portable-v2.3.1.zip`, `DOOMIsland-BrowserExtension-MV3.zip`), `Install-DOOMIsland.ps1`, `Uninstall-DOOMIsland.ps1`, `Sign-Artifacts.ps1`, and `DOOMIsland.iss` created and verified end-to-end.
 
 ---
 
@@ -56,4 +56,4 @@
 | `NOVAIsland.Tests` (Core, SQLite, LRCLIB, Framer, Bridge E2E) | 15 | 0 | 0 | `dotnet test` (`net10.0-windows10.0.19041.0`) — 2 s |
 | `DOOMIsland.exe` Debug & Release Self-Contained Launch | 2 | 0 | 0 | Clean launch + `doom_island.db` WAL initialization verified |
 | `NOVAIsland.BrowserExtension` JS Syntax (`node --check`) | 3 | 0 | 0 | `background.js`, `content.js`, `popup.js` |
-| `DOOMIsland-Setup-x64-v2.4.0.exe` / `Uninstall-DOOMIsland.ps1` E2E | 1 | 0 | 0 | Signed silent EXE install, Chrome/Opera/Edge Native Messaging registration, `BrowserHost --self-check`, `DOOMIsland.exe` launch, clean uninstall |
+| `DOOMIsland-Setup-x64-v2.3.1.exe` / `Uninstall-DOOMIsland.ps1` E2E | 1 | 0 | 0 | Signed silent EXE install, Chrome/Opera/Edge Native Messaging registration, `BrowserHost --self-check`, `DOOMIsland.exe` launch, clean uninstall |
