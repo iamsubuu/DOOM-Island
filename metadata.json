@@ -1,0 +1,6 @@
+{
+  "name": "NOVA Island",
+  "description": "Windows 11 Dynamic Island desktop application prototype featuring synchronized music and lyrics, clipboard manager, notifications, timers, system widgets, activity monitor, dashboard, and comprehensive settings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
