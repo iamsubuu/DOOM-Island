@@ -6,3 +6,15 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# .NET / WinUI 3
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+TestResults/
+AppPackages/
+BundleArtifacts/
+artifacts/

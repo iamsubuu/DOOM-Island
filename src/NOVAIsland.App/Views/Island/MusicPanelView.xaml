@@ -1,0 +1,167 @@
+<UserControl
+    x:Class="NOVAIsland.App.Views.Island.MusicPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:NOVAIsland.App.Controls">
+    <StackPanel Spacing="14">
+        <Grid ColumnSpacing="14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="64" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Border
+                Grid.Column="0"
+                Width="64"
+                Height="64"
+                CornerRadius="14"
+                BorderBrush="{StaticResource IslandBorderStrongBrush}"
+                BorderThickness="1">
+                <controls:SafeMediaImage
+                    x:Name="AlbumArtwork"
+                    ImageCornerRadius="13" />
+            </Border>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE8D6;" FontSize="12" Foreground="{StaticResource NovaAccentBrush}" />
+                    <TextBlock
+                        x:Name="SourceBadgeText"
+                        Text="Browser Media"
+                        FontSize="11"
+                        Foreground="{StaticResource IslandTextSecondaryBrush}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="TrackTitleText"
+                    Text="No active browser media"
+                    FontSize="15"
+                    FontWeight="SemiBold"
+                    Foreground="{StaticResource IslandTextPrimaryBrush}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    x:Name="TrackArtistText"
+                    Text="Play music or video in Chrome, Edge, or Opera"
+                    FontSize="12.5"
+                    Foreground="{StaticResource IslandTextSecondaryBrush}"
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8">
+                <controls:AudioEqualizerControl
+                    x:Name="Equalizer"
+                    BarCount="8"
+                    MaxBarHeight="16"
+                    HorizontalAlignment="Right" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button
+                        Click="OnOpenLyricsClick"
+                        Style="{StaticResource IslandTabButtonStyle}"
+                        Background="{StaticResource IslandControlBgBrush}"
+                        Padding="10,5">
+                        <TextBlock Text="Lyrics" FontSize="11.5" Foreground="{StaticResource IslandTextPrimaryBrush}" />
+                    </Button>
+                    <Button
+                        Click="OnOpenFullscreenLyricsClick"
+                        Style="{StaticResource IslandIconButtonStyle}"
+                        ToolTipService.ToolTip="Fullscreen Lyrics">
+                        <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE740;" FontSize="12" />
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Spacing="4">
+            <Slider
+                x:Name="SeekSlider"
+                Style="{StaticResource NovaSliderStyle}"
+                Minimum="0"
+                Maximum="100"
+                Value="0"
+                PointerCaptureLost="OnSeekCompleted" />
+            <Grid>
+                <TextBlock
+                    x:Name="ElapsedTimeText"
+                    Text="0:00"
+                    Style="{StaticResource MonoTabularTextStyle}"
+                    Foreground="{StaticResource IslandTextSecondaryBrush}"
+                    HorizontalAlignment="Left" />
+                <TextBlock
+                    x:Name="RemainingTimeText"
+                    Text="-0:00 / 0:00"
+                    Style="{StaticResource MonoTabularTextStyle}"
+                    Foreground="{StaticResource IslandTextSecondaryBrush}"
+                    HorizontalAlignment="Right" />
+            </Grid>
+        </StackPanel>
+
+        <Grid>
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button x:Name="PrevButton" Click="OnPrevClick" Style="{StaticResource IslandIconButtonStyle}" ToolTipService.ToolTip="Previous">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE892;" FontSize="13" Foreground="{StaticResource IslandTextPrimaryBrush}" />
+                </Button>
+                <Button
+                    x:Name="PlayPauseButton"
+                    Click="OnPlayPauseClick"
+                    Width="36"
+                    Height="36"
+                    CornerRadius="18"
+                    Padding="0"
+                    Background="#FFFFFFFF"
+                    Foreground="#FF09090B"
+                    BorderThickness="0">
+                    <FontIcon x:Name="PlayPauseIcon" FontFamily="Segoe MDL2 Assets" Glyph="&#xE768;" FontSize="14" Foreground="#FF09090B" />
+                </Button>
+                <Button x:Name="NextButton" Click="OnNextClick" Style="{StaticResource IslandIconButtonStyle}" ToolTipService.ToolTip="Next">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE893;" FontSize="13" Foreground="{StaticResource IslandTextPrimaryBrush}" />
+                </Button>
+                <Button
+                    Click="OnFocusTabClick"
+                    Style="{StaticResource IslandTabButtonStyle}"
+                    Background="{StaticResource IslandControlBgBrush}"
+                    Padding="8,5"
+                    Margin="6,0,0,0"
+                    ToolTipService.ToolTip="Switch to browser media tab">
+                    <TextBlock Text="Focus Tab" FontSize="11" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                </Button>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center" Width="136">
+                <Button Click="OnToggleMuteClick" Style="{StaticResource IslandIconButtonStyle}" Padding="4">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE767;" FontSize="13" />
+                </Button>
+                <Slider
+                    x:Name="VolumeSlider"
+                    Style="{StaticResource NovaSliderStyle}"
+                    Width="96"
+                    Minimum="0"
+                    Maximum="100"
+                    ValueChanged="OnVolumeChanged" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock
+            x:Name="CommandStatusText"
+            Visibility="Collapsed"
+            FontSize="11"
+            Foreground="{StaticResource NovaWarningBrush}" />
+
+        <Border BorderBrush="{StaticResource IslandDividerBrush}" BorderThickness="0,1,0,0" Padding="0,10,0,0">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    Text="Tabs"
+                    FontSize="11"
+                    Foreground="{StaticResource IslandTextMutedBrush}"
+                    VerticalAlignment="Center" />
+                <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="BrowserTabsStrip" Orientation="Horizontal" Spacing="6" />
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </StackPanel>
+</UserControl>

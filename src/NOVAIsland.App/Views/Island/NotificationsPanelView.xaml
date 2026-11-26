@@ -1,0 +1,40 @@
+<UserControl
+    x:Class="NOVAIsland.App.Views.Island.NotificationsPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Spacing="10">
+        <!-- Header Bar -->
+        <Grid>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <Button x:Name="ActiveTabBtn" Content="Active (0)" Click="OnActiveTabClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlActiveBrush}" />
+                <Button x:Name="HistoryTabBtn" Content="History" Click="OnHistoryTabClick" Style="{StaticResource IslandTabButtonStyle}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+                <Button Content="Mark Read" Click="OnMarkAllReadClick" Style="{StaticResource IslandTabButtonStyle}" />
+                <Button Content="Clear" Click="OnClearClick" Style="{StaticResource IslandTabButtonStyle}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Honest OS Permission / Identity Status -->
+        <Border
+            x:Name="PermissionBanner"
+            Visibility="Collapsed"
+            Padding="10,8"
+            CornerRadius="8"
+            Background="#1AF59E0B"
+            BorderBrush="#40F59E0B"
+            BorderThickness="1">
+            <TextBlock
+                x:Name="PermissionStatusText"
+                FontSize="11.5"
+                TextWrapping="Wrap"
+                Foreground="#FFFCD34D" />
+        </Border>
+
+        <!-- Notifications List -->
+        <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ListHost" Spacing="6" />
+        </ScrollViewer>
+    </StackPanel>
+</UserControl>

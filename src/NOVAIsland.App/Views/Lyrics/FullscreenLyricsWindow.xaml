@@ -1,0 +1,115 @@
+<Window
+    x:Class="NOVAIsland.App.Views.Lyrics.FullscreenLyricsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:NOVAIsland.App.Controls">
+    <Grid Background="#FF06070A">
+        <!-- Ambient Artwork Backdrop -->
+        <controls:SafeMediaImage
+            x:Name="BackdropImage"
+            ImageCornerRadius="0"
+            Opacity="0.32" />
+        <Border Background="#B006070A" />
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="64" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Top Bar -->
+            <Border Grid.Row="0" BorderBrush="#14FFFFFF" BorderThickness="0,0,0,1" Padding="32,0,32,0">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE8D6;" FontSize="14" Foreground="#FFE4E4E7" />
+                        <TextBlock x:Name="HeaderBrandText" Text="DOOM Lyrics" FontWeight="SemiBold" Foreground="#FFF4F4F5" />
+                        <TextBlock Text="·" Foreground="#FF71717A" />
+                        <TextBlock x:Name="SourceLabel" Text="LRCLIB" Foreground="{StaticResource NovaAccentBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Content="Manual LRCLIB Search" Click="OnToggleDrawerClick" Padding="14,6" CornerRadius="8" Background="#16FFFFFF" Foreground="#FFFFFFFF" />
+                        <Button Click="OnCloseClick" Padding="10,6" CornerRadius="8" Background="#16FFFFFF" Foreground="#FFFFFFFF">
+                            <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE711;" FontSize="13" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Main Split Stage -->
+            <Grid Grid.Row="1" MaxWidth="1120" Margin="48,32,48,32" ColumnSpacing="48">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="320" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Artwork & Transport -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="20">
+                    <Border CornerRadius="16" BorderBrush="#1AFFFFFF" BorderThickness="1" Width="320" Height="320">
+                        <controls:SafeMediaImage x:Name="CoverArt" ImageCornerRadius="15" />
+                    </Border>
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="TitleText" Text="No Track" FontSize="24" FontWeight="SemiBold" Foreground="#FFFFFFFF" TextWrapping="Wrap" />
+                        <TextBlock x:Name="ArtistText" Text="Play browser media" FontSize="14" Foreground="#FFD4D4D8" />
+                        <TextBlock x:Name="AlbumText" Text="" FontSize="12.5" Foreground="#FF71717A" />
+                    </StackPanel>
+                    <StackPanel Spacing="6">
+                        <Slider x:Name="SeekSlider" Style="{StaticResource NovaSliderStyle}" PointerCaptureLost="OnSeekCompleted" />
+                        <Grid>
+                            <TextBlock x:Name="ElapsedText" Text="0:00" Style="{StaticResource MonoTabularTextStyle}" Foreground="#FFA1A1AA" />
+                            <TextBlock x:Name="DurationText" Text="0:00" Style="{StaticResource MonoTabularTextStyle}" Foreground="#FFA1A1AA" HorizontalAlignment="Right" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="18" HorizontalAlignment="Center">
+                        <Button Click="OnPrevClick" Style="{StaticResource IslandIconButtonStyle}" Padding="10">
+                            <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE892;" FontSize="16" />
+                        </Button>
+                        <Button Click="OnPlayPauseClick" Width="48" Height="48" CornerRadius="24" Padding="0" Background="#FFFFFFFF" Foreground="#FF09090B" BorderThickness="0">
+                            <FontIcon x:Name="PlayIcon" FontFamily="Segoe MDL2 Assets" Glyph="&#xE768;" FontSize="16" Foreground="#FF09090B" />
+                        </Button>
+                        <Button Click="OnNextClick" Style="{StaticResource IslandIconButtonStyle}" Padding="10">
+                            <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE893;" FontSize="16" />
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Right Synchronized Lyrics Stream -->
+                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="LyricsStreamPanel" Spacing="18" Padding="0,80,16,80" />
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Slide-over LRCLIB Search Drawer -->
+            <Border
+                x:Name="SearchDrawer"
+                Grid.Row="1"
+                Visibility="Collapsed"
+                Width="380"
+                HorizontalAlignment="Right"
+                Background="#F20D0F14"
+                BorderBrush="#18FFFFFF"
+                BorderThickness="1,0,0,0"
+                Padding="24">
+                <StackPanel Spacing="14">
+                    <Grid>
+                        <TextBlock Text="LRCLIB Manual Lookup" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFFFF" />
+                        <Button Click="OnToggleDrawerClick" HorizontalAlignment="Right" Style="{StaticResource IslandIconButtonStyle}">
+                            <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE711;" FontSize="13" />
+                        </Button>
+                    </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="DrawerQuery" PlaceholderText="Search title or artist..." KeyDown="OnDrawerKeyDown" />
+                        <Button Grid.Column="1" Content="Search" Click="OnDrawerSearchClick" />
+                    </Grid>
+                    <ScrollViewer MaxHeight="480" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="DrawerResults" Spacing="8" />
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

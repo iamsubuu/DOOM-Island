@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WinUI 3 & Windows App SDK -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageVersion Include="WinUIEx" Version="2.9.3" />
+    <PackageVersion Include="H.NotifyIcon.WinUI" Version="2.4.1" />
+
+    <!-- MVVM & Dependency Injection -->
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.15" />
+
+    <!-- Persistence, Logging & Security -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
+
+    <!-- Audio & Platform -->
+    <PackageVersion Include="NAudio" Version="3.3.0" />
+    <PackageVersion Include="System.Management" Version="10.0.15" />
+
+    <!-- Testing -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
+  </ItemGroup>
+</Project>
+

@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="NOVAIsland.App.Controls.SafeMediaImage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="RootGrid" CornerRadius="{x:Bind ImageCornerRadius, Mode=OneWay}">
+        <Border
+            x:Name="FallbackBorder"
+            BorderBrush="#24FFFFFF"
+            BorderThickness="1"
+            CornerRadius="{x:Bind ImageCornerRadius, Mode=OneWay}">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#FF27272A" Offset="0" />
+                    <GradientStop Color="#FF09090B" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <FontIcon
+                FontFamily="Segoe MDL2 Assets"
+                Glyph="&#xE93C;"
+                FontSize="16"
+                Foreground="#FF71717A"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center" />
+        </Border>
+        <Image
+            x:Name="MediaImage"
+            Stretch="UniformToFill"
+            Visibility="Collapsed"
+            ImageFailed="OnImageFailed"
+            ImageOpened="OnImageOpened" />
+    </Grid>
+</UserControl>

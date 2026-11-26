@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DOOM Island Bridge</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <div class="header">
+        <div class="brand">
+          <span class="dot" id="statusDot"></span>
+          <span class="title">DOOM Island</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="enableToggle" checked />
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="status" id="connText">Checking Native Host...</div>
+      <div class="card" id="mediaCard">
+        <div class="meta-label">Active Browser Media</div>
+        <div class="track-title" id="trackTitle">No active media detected</div>
+        <div class="track-sub" id="trackArtist">Play audio or video in any tab</div>
+      </div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
+

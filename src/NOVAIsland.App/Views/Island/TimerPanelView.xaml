@@ -1,0 +1,102 @@
+<UserControl
+    x:Class="NOVAIsland.App.Views.Island.TimerPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:NOVAIsland.App.Controls">
+    <StackPanel Spacing="12">
+        <!-- Mode Switcher & Status -->
+        <Grid>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <Button x:Name="PomoTabBtn" Content="Pomodoro" Click="OnPomodoroTabClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlActiveBrush}" />
+                <Button x:Name="CountTabBtn" Content="Countdown" Click="OnCountdownTabClick" Style="{StaticResource IslandTabButtonStyle}" />
+                <Button x:Name="StopTabBtn" Content="Stopwatch" Click="OnStopwatchTabClick" Style="{StaticResource IslandTabButtonStyle}" />
+            </StackPanel>
+            <TextBlock
+                x:Name="StatusText"
+                Text="Session 1"
+                Style="{StaticResource MonoTabularTextStyle}"
+                Foreground="{StaticResource IslandTextSecondaryBrush}"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- Ring + Presets & Actions -->
+        <Grid ColumnSpacing="18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="92" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Width="92" Height="92">
+                <controls:ProgressRingControl x:Name="Ring" Progress="1.0" />
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock
+                        x:Name="TimeDisplayText"
+                        Text="25:00"
+                        FontFamily="{StaticResource NovaMonoFont}"
+                        FontSize="17"
+                        FontWeight="SemiBold"
+                        Foreground="#FFFFFFFF"
+                        HorizontalAlignment="Center" />
+                    <TextBlock
+                        x:Name="PhaseDisplayText"
+                        Text="Focus"
+                        FontSize="10"
+                        Foreground="{StaticResource IslandTextSecondaryBrush}"
+                        HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="12">
+                <!-- Pomodoro Presets -->
+                <StackPanel x:Name="PomoPresets" Orientation="Horizontal" Spacing="6">
+                    <Button Content="Focus 25m" Tag="Focus" Click="OnPomoPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                    <Button Content="Break 5m" Tag="ShortBreak" Click="OnPomoPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                    <Button Content="Long 15m" Tag="LongBreak" Click="OnPomoPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                </StackPanel>
+
+                <!-- Countdown Presets -->
+                <StackPanel x:Name="CountdownPresets" Visibility="Collapsed" Orientation="Horizontal" Spacing="6">
+                    <Button Content="3m" Tag="180" Click="OnCountdownPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                    <Button Content="5m" Tag="300" Click="OnCountdownPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                    <Button Content="10m" Tag="600" Click="OnCountdownPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                    <Button Content="25m" Tag="1500" Click="OnCountdownPresetClick" Style="{StaticResource IslandTabButtonStyle}" Background="{StaticResource IslandControlBgBrush}" />
+                </StackPanel>
+
+                <!-- Stopwatch Laps -->
+                <TextBlock
+                    x:Name="LapsText"
+                    Visibility="Collapsed"
+                    Text="Press Lap while running to record splits."
+                    Style="{StaticResource MonoTabularTextStyle}"
+                    Foreground="{StaticResource IslandTextSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <!-- Actions -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Name="StartPauseBtn"
+                        Content="Start"
+                        Click="OnStartPauseClick"
+                        Background="#FFFFFFFF"
+                        Foreground="#FF09090B"
+                        FontWeight="SemiBold"
+                        CornerRadius="8"
+                        Padding="16,6" />
+                    <Button
+                        x:Name="LapBtn"
+                        Content="Lap"
+                        Visibility="Collapsed"
+                        Click="OnLapClick"
+                        Style="{StaticResource IslandTabButtonStyle}"
+                        Background="{StaticResource IslandControlBgBrush}" />
+                    <Button
+                        Content="Reset"
+                        Click="OnResetClick"
+                        Style="{StaticResource IslandTabButtonStyle}"
+                        Background="{StaticResource IslandControlBgBrush}" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </StackPanel>
+</UserControl>

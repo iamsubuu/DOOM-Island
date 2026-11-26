@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>NOVAIsland.Tests</RootNamespace>
+    <AssemblyName>NOVAIsland.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NOVAIsland.Core\NOVAIsland.Core.csproj" />
+    <ProjectReference Include="..\..\src\NOVAIsland.Services\NOVAIsland.Services.csproj" />
+    <ProjectReference Include="..\..\src\NOVAIsland.Infrastructure\NOVAIsland.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\NOVAIsland.BrowserHost\NOVAIsland.BrowserHost.csproj" />
+  </ItemGroup>
+</Project>
+

@@ -1,0 +1,10 @@
+{
+  "name": "com.doomisland.host",
+  "description": "DOOM Island Native Messaging Host for browser media detection and control",
+  "path": "NOVAIsland.BrowserHost.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://amplhmapoeandecddkchambamhafdcgp/"
+  ]
+}
+

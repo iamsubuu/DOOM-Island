@@ -1,0 +1,16 @@
+<UserControl
+    x:Class="NOVAIsland.App.Controls.ProgressRingControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="RingRoot" Width="{x:Bind RingSize, Mode=OneWay}" Height="{x:Bind RingSize, Mode=OneWay}">
+        <Ellipse
+            Stroke="#1AFFFFFF"
+            StrokeThickness="{x:Bind StrokeThickness, Mode=OneWay}" />
+        <Path
+            x:Name="ProgressArc"
+            Stroke="{ThemeResource NovaAccentBrush}"
+            StrokeThickness="{x:Bind StrokeThickness, Mode=OneWay}"
+            StrokeStartLineCap="Round"
+            StrokeEndLineCap="Round" />
+    </Grid>
+</UserControl>

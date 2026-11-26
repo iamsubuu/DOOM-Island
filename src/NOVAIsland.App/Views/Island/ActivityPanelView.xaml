@@ -1,0 +1,20 @@
+<UserControl
+    x:Class="NOVAIsland.App.Views.Island.ActivityPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Spacing="10">
+        <Grid>
+            <TextBlock Text="Live Activities" FontSize="11.5" FontWeight="Medium" Foreground="#FFD4D4D8" VerticalAlignment="Center" />
+            <Button
+                Content="Capture Snip"
+                Click="OnSnipClick"
+                HorizontalAlignment="Right"
+                Style="{StaticResource IslandTabButtonStyle}"
+                Background="{StaticResource IslandControlBgBrush}" />
+        </Grid>
+
+        <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="FeedHost" Spacing="8" />
+        </ScrollViewer>
+    </StackPanel>
+</UserControl>

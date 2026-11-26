@@ -1,0 +1,105 @@
+<UserControl
+    x:Class="NOVAIsland.App.Views.Island.SystemPanelView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Spacing="12">
+        <!-- Quick Hardware Tiles -->
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Padding="10" CornerRadius="10" Background="{StaticResource IslandControlBgBrush}" BorderBrush="{StaticResource IslandBorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Wi-Fi" FontSize="11.5" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                    <TextBlock x:Name="WifiValueText" Text="Connected" FontSize="10.5" Foreground="{StaticResource IslandTextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Padding="10" CornerRadius="10" Background="{StaticResource IslandControlBgBrush}" BorderBrush="{StaticResource IslandBorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <TextBlock x:Name="BatteryPctText" Text="AC" FontSize="11.5" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                    <TextBlock x:Name="BatteryStateText" Text="Desktop" FontSize="10.5" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <Button Grid.Column="2" Click="OnToggleMicClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="10" CornerRadius="10" Background="{StaticResource IslandControlBgBrush}" BorderBrush="{StaticResource IslandBorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Mic" FontSize="11.5" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                    <TextBlock x:Name="MicStateText" Text="Active" FontSize="10.5" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                </StackPanel>
+            </Button>
+
+            <Border Grid.Column="3" Padding="10" CornerRadius="10" Background="{StaticResource IslandControlBgBrush}" BorderBrush="{StaticResource IslandBorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Camera" FontSize="11.5" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                    <TextBlock x:Name="CamStateText" Text="Standby" FontSize="10.5" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Sliders -->
+        <Border BorderBrush="{StaticResource IslandDividerBrush}" BorderThickness="0,1,0,1" Padding="0,8,0,8">
+            <StackPanel Spacing="6">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="40" />
+                    </Grid.ColumnDefinitions>
+                    <Button Click="OnToggleMuteClick" Style="{StaticResource IslandIconButtonStyle}" Padding="2">
+                        <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE767;" FontSize="13" />
+                    </Button>
+                    <TextBlock Grid.Column="1" Text="Volume" FontSize="11.5" Foreground="{StaticResource IslandTextSecondaryBrush}" VerticalAlignment="Center" />
+                    <Slider x:Name="VolumeSlider" Grid.Column="2" Minimum="0" Maximum="100" Style="{StaticResource NovaSliderStyle}" ValueChanged="OnVolumeChanged" />
+                    <TextBlock x:Name="VolumePctText" Grid.Column="3" Text="50%" Style="{StaticResource MonoTabularTextStyle}" Foreground="#FFE4E4E7" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid x:Name="BrightnessRow" ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="40" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE706;" FontSize="13" Margin="2,0,2,0" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="Display" FontSize="11.5" Foreground="{StaticResource IslandTextSecondaryBrush}" VerticalAlignment="Center" />
+                    <Slider x:Name="BrightnessSlider" Grid.Column="2" Minimum="0" Maximum="100" Style="{StaticResource NovaSliderStyle}" ValueChanged="OnBrightnessChanged" />
+                    <TextBlock x:Name="BrightnessPctText" Grid.Column="3" Text="N/A" Style="{StaticResource MonoTabularTextStyle}" Foreground="#FFE4E4E7" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Audio Output Devices -->
+        <StackPanel Spacing="6">
+            <TextBlock Text="Audio Output Device" FontSize="11" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+            <GridView x:Name="AudioDevicesGrid" SelectionMode="None" MaxHeight="96" />
+        </StackPanel>
+
+        <!-- CPU & RAM -->
+        <Grid ColumnSpacing="14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Spacing="5">
+                <Grid>
+                    <TextBlock Text="CPU Load" FontSize="11.5" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                    <TextBlock x:Name="CpuPctText" Text="0%" Style="{StaticResource MonoTabularTextStyle}" Foreground="#FFFFFFFF" HorizontalAlignment="Right" />
+                </Grid>
+                <ProgressBar x:Name="CpuBar" Minimum="0" Maximum="100" Height="5" Foreground="{StaticResource NovaAccentBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="5">
+                <Grid>
+                    <TextBlock Text="Memory" FontSize="11.5" Foreground="{StaticResource IslandTextSecondaryBrush}" />
+                    <TextBlock x:Name="RamText" Text="0 / 0 GB" Style="{StaticResource MonoTabularTextStyle}" Foreground="#FFFFFFFF" HorizontalAlignment="Right" />
+                </Grid>
+                <ProgressBar x:Name="RamBar" Minimum="0" Maximum="100" Height="5" Foreground="#FFE4E4E7" />
+            </StackPanel>
+        </Grid>
+    </StackPanel>
+</UserControl>

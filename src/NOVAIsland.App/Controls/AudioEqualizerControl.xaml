@@ -1,0 +1,11 @@
+<UserControl
+    x:Class="NOVAIsland.App.Controls.AudioEqualizerControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel
+        x:Name="BarsHost"
+        Orientation="Horizontal"
+        Spacing="2"
+        VerticalAlignment="Center"
+        HorizontalAlignment="Center" />
+</UserControl>
