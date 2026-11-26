@@ -9,9 +9,26 @@ public sealed class StartupRegistrationService : IStartupService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = AppConstants.AppDataFolderName;
+    private const string PackagedStartupTaskId = "DOOMIslandStartup";
 
     public bool IsStartupEnabled()
     {
+        if (HasPackageIdentity())
+        {
+            try
+            {
+                var task = Task.Run(() => Windows.ApplicationModel.StartupTask.GetAsync(PackagedStartupTaskId).AsTask())
+                    .GetAwaiter()
+                    .GetResult();
+                return task.State is Windows.ApplicationModel.StartupTaskState.Enabled
+                    or Windows.ApplicationModel.StartupTaskState.EnabledByPolicy;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
@@ -25,18 +42,64 @@ public sealed class StartupRegistrationService : IStartupService
 
     public void SetStartupEnabled(bool enabled)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
-        if (enabled)
+        if (HasPackageIdentity())
         {
-            var exePath = Environment.ProcessPath;
-            if (!string.IsNullOrWhiteSpace(exePath))
+            _ = SetPackagedStartupAsync(enabled);
+            return;
+        }
+
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
+            if (enabled)
             {
-                key.SetValue(ValueName, $"\"{exePath}\" --minimized");
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    key.SetValue(ValueName, $"\"{exePath}\" --minimized");
+                }
+            }
+            else
+            {
+                key.DeleteValue(ValueName, throwOnMissingValue: false);
             }
         }
-        else
+        catch
         {
-            key.DeleteValue(ValueName, throwOnMissingValue: false);
+            // Ignore registry write failures in restricted environments.
+        }
+    }
+
+    private static bool HasPackageIdentity()
+    {
+        try
+        {
+            _ = Windows.ApplicationModel.Package.Current.Id;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task SetPackagedStartupAsync(bool enabled)
+    {
+        try
+        {
+            var task = await Windows.ApplicationModel.StartupTask.GetAsync(PackagedStartupTaskId).AsTask();
+            if (enabled)
+            {
+                await task.RequestEnableAsync().AsTask();
+            }
+            else
+            {
+                task.Disable();
+            }
+        }
+        catch
+        {
+            // Ignore startup task errors if manifest extension is disabled by policy.
         }
     }
 }

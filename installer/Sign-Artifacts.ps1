@@ -11,42 +11,45 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Resolve-SigningCertificate {
+    $cert = $null
+
     if (-not [string]::IsNullOrWhiteSpace($PfxPath) -and (Test-Path $PfxPath)) {
         Write-Host "Using PFX certificate: $PfxPath"
         if ([string]::IsNullOrEmpty($PfxPassword)) {
-            return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($PfxPath)
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($PfxPath)
         }
-        $sec = ConvertTo-SecureString -String $PfxPassword -AsPlainText -Force
-        return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($PfxPath, $sec)
+        else {
+            $sec = ConvertTo-SecureString -String $PfxPassword -AsPlainText -Force
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($PfxPath, $sec)
+        }
     }
-
-    if (-not [string]::IsNullOrWhiteSpace($Thumbprint)) {
+    elseif (-not [string]::IsNullOrWhiteSpace($Thumbprint)) {
         $cert = Get-ChildItem Cert:\CurrentUser\My, Cert:\LocalMachine\My -CodeSigningCert -ErrorAction SilentlyContinue |
             Where-Object { $_.Thumbprint -eq $Thumbprint } |
             Select-Object -First 1
-        if ($cert) {
-            Write-Host "Using certificate store thumbprint: $($cert.Thumbprint)"
-            return $cert
+        if (-not $cert) {
+            throw "Code signing certificate with thumbprint '$Thumbprint' not found."
         }
-        throw "Code signing certificate with thumbprint '$Thumbprint' not found."
-    }
-
-    $existing = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
-        Where-Object { $_.Subject -eq "CN=DOOM Island" -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
-        Sort-Object NotAfter -Descending |
-        Select-Object -First 1
-
-    if (-not $existing) {
-        Write-Host "Creating local self-signed Authenticode certificate (CN=DOOM Island) in Cert:\CurrentUser\My..."
-        $existing = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject "CN=DOOM Island" `
-            -FriendlyName "DOOM Island Local Code Signing" `
-            -CertStoreLocation "Cert:\CurrentUser\My" `
-            -NotAfter (Get-Date).AddYears(5)
+        Write-Host "Using certificate store thumbprint: $($cert.Thumbprint)"
     }
     else {
-        Write-Host "Using existing local self-signed certificate: $($existing.Thumbprint)"
+        $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
+            Where-Object { $_.Subject -eq "CN=DOOM Island" -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
+            Sort-Object NotAfter -Descending |
+            Select-Object -First 1
+
+        if (-not $cert) {
+            Write-Host "Creating local self-signed Authenticode certificate (CN=DOOM Island) in Cert:\CurrentUser\My..."
+            $cert = New-SelfSignedCertificate `
+                -Type CodeSigningCert `
+                -Subject "CN=DOOM Island" `
+                -FriendlyName "DOOM Island Local Code Signing" `
+                -CertStoreLocation "Cert:\CurrentUser\My" `
+                -NotAfter (Get-Date).AddYears(5)
+        }
+        else {
+            Write-Host "Using existing local self-signed certificate: $($cert.Thumbprint)"
+        }
     }
 
     if (-not [string]::IsNullOrWhiteSpace($PublicCertOut)) {
@@ -54,11 +57,65 @@ function Resolve-SigningCertificate {
         if (-not [string]::IsNullOrEmpty($certDir)) {
             New-Item -ItemType Directory -Force -Path $certDir | Out-Null
         }
-        Export-Certificate -Cert $existing -FilePath $PublicCertOut -Force | Out-Null
+        Export-Certificate -Cert $cert -FilePath $PublicCertOut -Force | Out-Null
         Write-Host "Exported public certificate (.cer) -> $PublicCertOut"
     }
 
-    return $existing
+    return $cert
+}
+
+function Find-SignToolExe {
+    $cmd = Get-Command "signtool.exe" -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+
+    $candidates = @()
+    $candidates += Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue
+    $candidates += Get-ChildItem "$env:USERPROFILE\.nuget\packages\microsoft.windows.sdk.buildtools\*\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue
+
+    $best = $candidates | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($best) { return $best.FullName }
+    throw "signtool.exe not found. Restore NuGet packages (Microsoft.Windows.SDK.BuildTools) or install Windows 10/11 SDK."
+}
+
+function Invoke-MsixSign {
+    param(
+        [string]$FilePath,
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]$Cert
+    )
+
+    $signTool = Find-SignToolExe
+    $baseArgs = @("sign", "/fd", "SHA256")
+    if (-not [string]::IsNullOrWhiteSpace($PfxPath) -and (Test-Path $PfxPath)) {
+        $baseArgs += @("/f", $PfxPath)
+        if (-not [string]::IsNullOrEmpty($PfxPassword)) {
+            $baseArgs += @("/p", $PfxPassword)
+        }
+    }
+    else {
+        $inLocalMachine = [bool](Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+            Where-Object { $_.Thumbprint -eq $Cert.Thumbprint })
+        if ($inLocalMachine) {
+            $baseArgs += "/sm"
+        }
+        $baseArgs += @("/sha1", $Cert.Thumbprint)
+    }
+
+    $tsArgs = $baseArgs + @("/tr", "http://timestamp.digicert.com", "/td", "SHA256", $FilePath)
+    $null = & $signTool @tsArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Timestamp server unreachable or rejected; signing MSIX without external timestamp for $FilePath"
+        $noTsArgs = $baseArgs + @($FilePath)
+        $out = & $signTool @noTsArgs 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "signtool.exe failed for $FilePath (exit $LASTEXITCODE): $($out -join [Environment]::NewLine)"
+        }
+    }
+
+    $sig = Get-AuthenticodeSignature -FilePath $FilePath
+    if ($sig.Status -eq "NotSigned" -or $sig.Status -eq "HashMismatch") {
+        throw "MSIX signature verification failed for $FilePath : $($sig.Status) ($($sig.StatusMessage))"
+    }
+    Write-Host "Signed $(Split-Path -Leaf $FilePath) | Thumbprint: $($Cert.Thumbprint) | Status: $($sig.Status)"
 }
 
 $cert = Resolve-SigningCertificate
@@ -66,6 +123,12 @@ $cert = Resolve-SigningCertificate
 foreach ($path in $TargetPaths) {
     if (-not (Test-Path $path)) {
         throw "Cannot sign missing file: $path"
+    }
+
+    $ext = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
+    if ($ext -in @(".msix", ".appx", ".msixbundle", ".appxbundle")) {
+        Invoke-MsixSign -FilePath $path -Cert $cert
+        continue
     }
 
     $sig = $null
