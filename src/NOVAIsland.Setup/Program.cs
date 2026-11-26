@@ -57,7 +57,7 @@ internal static class Program
 internal static class InstallerEngine
 {
     private const string AppName = "DOOM Island";
-    private const string AppVersion = "1.0.0";
+    private const string AppVersion = "2.3.0";
     private const string NativeHostName = "com.doomisland.host";
     private const string DefaultExtensionId = "amplhmapoeandecddkchambamhafdcgp";
 
@@ -75,8 +75,15 @@ internal static class InstallerEngine
         onStatus("Extracting DOOM Island files...");
         ExtractPayload(installDir, onProgress);
 
+        // Clean up legacy v1.0.0 executable name if upgrading in place
+        var legacyExe = Path.Combine(installDir, "NOVAIsland.App.exe");
+        if (File.Exists(legacyExe))
+        {
+            try { File.Delete(legacyExe); } catch { }
+        }
+
         onStatus("Creating Start Menu shortcut...");
-        var appExe = Path.Combine(installDir, "NOVAIsland.App.exe");
+        var appExe = Path.Combine(installDir, "DOOMIsland.exe");
         var startMenuDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Microsoft", "Windows", "Start Menu", "Programs");
@@ -121,7 +128,7 @@ internal static class InstallerEngine
 
     private static void StopExistingProcesses()
     {
-        foreach (var procName in new[] { "NOVAIsland.App", "NOVAIsland.BrowserHost" })
+        foreach (var procName in new[] { "DOOMIsland", "NOVAIsland.App", "NOVAIsland.BrowserHost" })
         {
             try
             {

@@ -5,167 +5,249 @@
     xmlns:controls="using:NOVAIsland.App.Controls"
     xmlns:island="using:NOVAIsland.App.Views.Island">
     <Grid x:Name="RootHost" Background="Transparent">
-        <Border
-            x:Name="PillShell"
+        <!-- Centered Notch Assembly (Flared Bezel Ears + Notch Shell) -->
+        <Grid
+            x:Name="NotchAssembly"
             HorizontalAlignment="Center"
             VerticalAlignment="Top"
-            Width="216"
-            CornerRadius="22"
-            Background="{StaticResource IslandSurfaceBrush}"
-            BorderBrush="{StaticResource IslandBorderSubtleBrush}"
-            BorderThickness="1"
             PointerEntered="OnPillPointerEntered"
             PointerExited="OnPillPointerExited"
             PointerPressed="OnPillPointerPressed"
             PointerMoved="OnPillPointerMoved"
             PointerReleased="OnPillPointerReleased"
             DoubleTapped="OnPillDoubleTapped">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-            <Grid>
-                <!-- 1. COMPACT IDLE PILL -->
-                <Grid
-                    x:Name="CompactView"
-                    Height="36"
-                    Padding="16,0,16,0"
-                    Tapped="OnCompactTapped">
-                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Center">
-                        <Ellipse
-                            x:Name="CompactStatusDot"
-                            Width="6"
-                            Height="6"
-                            Fill="{StaticResource NovaAccentBrush}" />
-                        <TextBlock
-                            x:Name="CompactWordmark"
-                            Text="DOOM"
-                            FontSize="12"
-                            FontWeight="Medium"
-                            Foreground="#FFF4F4F5" />
-                    </StackPanel>
+            <!-- Left Concave Bezel Shoulder (macOS / Nook Notch Ear) -->
+            <Path
+                x:Name="LeftNotchEar"
+                Grid.Column="0"
+                Width="12"
+                Height="12"
+                VerticalAlignment="Top"
+                Visibility="Collapsed"
+                Fill="{StaticResource IslandSurfaceBrush}"
+                Data="M 0,0 L 12,0 L 12,12 A 12,12 0 0 0 0,0 Z" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <TextBlock
-                            x:Name="CompactTimerBadge"
-                            Visibility="Collapsed"
-                            Style="{StaticResource MonoTabularTextStyle}"
-                            Foreground="#FFE4E4E7" />
-                        <TextBlock
-                            x:Name="CompactAlertBadge"
-                            Visibility="Collapsed"
-                            Style="{StaticResource MonoTabularTextStyle}"
-                            Foreground="#FFD4D4D8" />
-                        <StackPanel x:Name="CompactIdleGroup" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border
-                                x:Name="IdleBreatheBar"
-                                Width="18"
-                                Height="2"
-                                CornerRadius="1"
-                                Background="{StaticResource NovaAccentBrush}" />
-                            <TextBlock Text="Ready" FontSize="11" Foreground="{StaticResource IslandTextMutedBrush}" />
-                        </StackPanel>
-                    </StackPanel>
-                </Grid>
+            <Border
+                x:Name="PillShell"
+                Grid.Column="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Width="216"
+                CornerRadius="0,0,22,22"
+                Background="{StaticResource IslandSurfaceBrush}"
+                BorderBrush="{StaticResource IslandBorderStrongBrush}"
+                BorderThickness="1,0,1,1">
 
-                <!-- 2. MUSIC COMPACT PILL -->
-                <Grid
-                    x:Name="MusicPillView"
-                    Visibility="Collapsed"
-                    Height="40"
-                    Padding="10,0,10,0"
-                    Tapped="OnCompactTapped">
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                <Grid>
+                    <!-- Venom Frosted Glass Top-Sheen Specular Layer -->
+                    <Border
+                        x:Name="GlassSheenLayer"
+                        IsHitTestVisible="False"
+                        CornerRadius="{Binding ElementName=PillShell, Path=CornerRadius}">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#1AFFFFFF" Offset="0" />
+                                <GradientStop Color="#05FFFFFF" Offset="0.24" />
+                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <controls:SafeMediaImage
-                                x:Name="MusicPillArt"
-                                Width="24"
-                                Height="24"
-                                ImageCornerRadius="12" />
+                    <!-- 0. STEALTH TOP-BEZEL STATIC HOVER LINE -->
+                    <Grid
+                        x:Name="StealthBarView"
+                        Visibility="Collapsed"
+                        Height="14"
+                        Background="#02000000">
+                        <Border
+                            x:Name="StealthHoverLine"
+                            Width="96"
+                            Height="3"
+                            CornerRadius="0,0,4,4"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Top"
+                            Margin="0"
+                            BorderBrush="#2A000000"
+                            BorderThickness="0,0,0,0.75">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#22FFFFFF" Offset="0" />
+                                    <GradientStop Color="#D8EEF2FF" Offset="0.5" />
+                                    <GradientStop Color="#22FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                    </Grid>
+
+                    <!-- 1. COMPACT IDLE PILL -->
+                    <Grid
+                        x:Name="CompactView"
+                        Height="36"
+                        Padding="16,0,16,0"
+                        Tapped="OnCompactTapped">
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Center">
+                            <Ellipse
+                                x:Name="CompactStatusDot"
+                                Width="6"
+                                Height="6"
+                                Fill="{StaticResource NovaAccentBrush}" />
                             <TextBlock
-                                x:Name="MusicPillTitle"
-                                Text="Track"
+                                x:Name="CompactWordmark"
+                                Text="DOOM"
                                 FontSize="12"
                                 FontWeight="Medium"
-                                Foreground="#FFFFFFFF"
-                                TextTrimming="CharacterEllipsis"
-                                MaxWidth="150"
-                                VerticalAlignment="Center" />
+                                Foreground="#FFF4F4F5" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <controls:AudioEqualizerControl x:Name="CompactEqualizer" BarCount="5" MaxBarHeight="12" />
-                            <Button
-                                Click="OnCompactPlayPauseClick"
-                                Width="26"
-                                Height="26"
-                                CornerRadius="13"
-                                Padding="0"
-                                Background="Transparent"
-                                BorderThickness="0">
-                                <FontIcon x:Name="CompactPlayIcon" FontFamily="Segoe MDL2 Assets" Glyph="&#xE769;" FontSize="11" Foreground="#FFE4E4E7" />
-                            </Button>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock
+                                x:Name="CompactTimerBadge"
+                                Visibility="Collapsed"
+                                Style="{StaticResource MonoTabularTextStyle}"
+                                Foreground="#FFE4E4E7" />
+                            <TextBlock
+                                x:Name="CompactAlertBadge"
+                                Visibility="Collapsed"
+                                Style="{StaticResource MonoTabularTextStyle}"
+                                Foreground="#FFD4D4D8" />
+                            <StackPanel x:Name="CompactIdleGroup" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Border
+                                    x:Name="IdleBreatheBar"
+                                    Width="18"
+                                    Height="2"
+                                    CornerRadius="1"
+                                    Background="{StaticResource NovaAccentBrush}" />
+                                <TextBlock Text="Ready" FontSize="11" Foreground="{StaticResource IslandTextMutedBrush}" />
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 
-                    <!-- Bottom Progress Hairline -->
-                    <ProgressBar
-                        x:Name="CompactProgressLine"
-                        VerticalAlignment="Bottom"
-                        Height="2"
-                        Margin="10,0,10,0"
-                        Minimum="0"
-                        Maximum="100"
-                        Foreground="{StaticResource NovaAccentBrush}"
-                        Background="#12FFFFFF" />
-                </Grid>
+                    <!-- 2. MUSIC COMPACT PILL -->
+                    <Grid
+                        x:Name="MusicPillView"
+                        Visibility="Collapsed"
+                        Height="40"
+                        Padding="10,0,10,0"
+                        Tapped="OnCompactTapped">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                <!-- 3. EXPANDED MODULAR SHELL -->
-                <StackPanel
-                    x:Name="ExpandedShellView"
-                    Visibility="Collapsed"
-                    Padding="14"
-                    Spacing="12">
-                    <!-- Top Module Switcher Bar -->
-                    <Border BorderBrush="{StaticResource IslandDividerBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,10">
-                        <Grid>
-                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,64,0">
-                                <StackPanel Orientation="Horizontal" Spacing="2">
-                                    <Button Tag="Expanded" Content="Music" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                    <Button Tag="Lyrics" Content="Lyrics" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                    <Button Tag="Clipboard" Content="Clipboard" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                    <Button Tag="Notifications" Content="Alerts" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                    <Button Tag="Timer" Content="Timer" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                    <Button Tag="System" Content="System" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                    <Button Tag="Activity" Content="Activity" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" />
-                                </StackPanel>
-                            </ScrollViewer>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <controls:SafeMediaImage
+                                    x:Name="MusicPillArt"
+                                    Width="24"
+                                    Height="24"
+                                    ImageCornerRadius="12" />
+                                <TextBlock
+                                    x:Name="MusicPillTitle"
+                                    Text="Track"
+                                    FontSize="12"
+                                    FontWeight="Medium"
+                                    Foreground="#FFFFFFFF"
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxWidth="150"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
 
-                            <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right">
-                                <Button Click="OnOpenSettingsClick" Style="{StaticResource IslandIconButtonStyle}" ToolTipService.ToolTip="Settings">
-                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE713;" FontSize="12" />
-                                </Button>
-                                <Button Click="OnCollapseClick" Style="{StaticResource IslandIconButtonStyle}" ToolTipService.ToolTip="Collapse">
-                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE70E;" FontSize="12" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <controls:AudioEqualizerControl x:Name="CompactEqualizer" BarCount="5" MaxBarHeight="12" />
+                                <Button
+                                    Click="OnCompactPlayPauseClick"
+                                    Width="26"
+                                    Height="26"
+                                    CornerRadius="13"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0">
+                                    <FontIcon x:Name="CompactPlayIcon" FontFamily="Segoe MDL2 Assets" Glyph="&#xE769;" FontSize="11" Foreground="#FFE4E4E7" />
                                 </Button>
                             </StackPanel>
                         </Grid>
-                    </Border>
 
-                    <!-- Active Panel Viewport -->
-                    <Grid x:Name="PanelContainer">
-                        <island:MusicPanelView x:Name="MusicPanel" Visibility="Collapsed" />
-                        <island:LyricsPanelView x:Name="LyricsPanel" Visibility="Collapsed" />
-                        <island:ClipboardPanelView x:Name="ClipboardPanel" Visibility="Collapsed" />
-                        <island:NotificationsPanelView x:Name="NotificationsPanel" Visibility="Collapsed" />
-                        <island:TimerPanelView x:Name="TimerPanel" Visibility="Collapsed" />
-                        <island:SystemPanelView x:Name="SystemPanel" Visibility="Collapsed" />
-                        <island:ActivityPanelView x:Name="ActivityPanel" Visibility="Collapsed" />
+                        <ProgressBar
+                            x:Name="CompactProgressLine"
+                            VerticalAlignment="Bottom"
+                            Height="2"
+                            Margin="10,0,10,0"
+                            Minimum="0"
+                            Maximum="100"
+                            Foreground="{StaticResource NovaAccentBrush}"
+                            Background="#12FFFFFF" />
                     </Grid>
-                </StackPanel>
-            </Grid>
-        </Border>
+
+                    <!-- 3. EXPANDED NOTCH SHELL -->
+                    <Grid
+                        x:Name="ExpandedShellView"
+                        Visibility="Collapsed"
+                        Padding="16,8,16,14"
+                        RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Top Notch Bar (Tabs + Camera Dot + Actions) -->
+                        <Grid Grid.Row="0" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="TopTabsPanel" Orientation="Horizontal" Spacing="3">
+                                    <Button Tag="Expanded" Content="Notch" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                    <Button Tag="Activity" Content="Tray" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                    <Button Tag="Lyrics" Content="Lyrics" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                    <Button Tag="Clipboard" Content="Clipboard" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                    <Button Tag="Notifications" Content="Alerts" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                    <Button Tag="Timer" Content="Timer" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                    <Button Tag="System" Content="System" Click="OnTabClick" Style="{StaticResource IslandTabButtonStyle}" Padding="8,4" />
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Click="OnOpenSettingsClick" Style="{StaticResource IslandIconButtonStyle}" Padding="5" ToolTipService.ToolTip="Settings">
+                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE713;" FontSize="11.5" />
+                                </Button>
+                                <Button Click="OnCollapseClick" Style="{StaticResource IslandIconButtonStyle}" Padding="5" ToolTipService.ToolTip="Collapse">
+                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE70E;" FontSize="11.5" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Active Panel Viewport -->
+                        <Grid Grid.Row="1" x:Name="PanelContainer">
+                            <island:MusicPanelView x:Name="MusicPanel" Visibility="Collapsed" />
+                            <island:LyricsPanelView x:Name="LyricsPanel" Visibility="Collapsed" />
+                            <island:ClipboardPanelView x:Name="ClipboardPanel" Visibility="Collapsed" />
+                            <island:NotificationsPanelView x:Name="NotificationsPanel" Visibility="Collapsed" />
+                            <island:TimerPanelView x:Name="TimerPanel" Visibility="Collapsed" />
+                            <island:SystemPanelView x:Name="SystemPanel" Visibility="Collapsed" />
+                            <island:ActivityPanelView x:Name="ActivityPanel" Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Right Concave Bezel Shoulder (macOS / Nook Notch Ear) -->
+            <Path
+                x:Name="RightNotchEar"
+                Grid.Column="2"
+                Width="12"
+                Height="12"
+                VerticalAlignment="Top"
+                Visibility="Collapsed"
+                Fill="{StaticResource IslandSurfaceBrush}"
+                Data="M 0,0 L 12,0 A 12,12 0 0 0 0,12 Z" />
+        </Grid>
     </Grid>
 </Window>

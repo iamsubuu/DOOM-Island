@@ -25,12 +25,18 @@
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="236" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left Sidebar -->
-            <Border Grid.Column="0" Background="{StaticResource WindowSidebarBrush}" BorderBrush="{StaticResource WindowDividerBrush}" BorderThickness="0,0,1,0" Padding="12">
+            <!-- Left Sidebar (Wide Layout) -->
+            <Border
+                x:Name="SidebarContainer"
+                Grid.Column="0"
+                Background="{StaticResource WindowSidebarBrush}"
+                BorderBrush="{StaticResource WindowDividerBrush}"
+                BorderThickness="0,0,1,0"
+                Padding="12">
                 <Grid RowSpacing="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -44,17 +50,49 @@
             </Border>
 
             <!-- Right Content Pane -->
-            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
-                <StackPanel Padding="28" Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
-                    <Border BorderBrush="{StaticResource WindowDividerBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,14">
-                        <StackPanel Spacing="4">
-                            <TextBlock x:Name="SectionTitleText" Text="General" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource WindowTextPrimaryBrush}" />
-                            <TextBlock x:Name="SectionSubtitleText" Text="" FontSize="12.5" Foreground="{StaticResource WindowTextSecondaryBrush}" />
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Compact Section Switcher Bar (Narrow Responsive Mode) -->
+                <Border
+                    x:Name="CompactNavBar"
+                    Grid.Row="0"
+                    Visibility="Collapsed"
+                    Background="{StaticResource WindowSidebarBrush}"
+                    BorderBrush="{StaticResource WindowDividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="20,10,20,10">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Section" FontSize="12.5" FontWeight="Medium" Foreground="{StaticResource WindowTextSecondaryBrush}" VerticalAlignment="Center" />
+                        <ComboBox
+                            x:Name="CompactSectionCombo"
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            SelectionChanged="OnCompactSectionChanged" />
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Padding="28,22,28,28">
+                        <StackPanel Spacing="14" MaxWidth="780" HorizontalAlignment="Stretch">
+                            <Border BorderBrush="{StaticResource WindowDividerBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,14">
+                                <StackPanel Spacing="4">
+                                    <TextBlock x:Name="SectionTitleText" Text="General" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{StaticResource WindowTextPrimaryBrush}" />
+                                    <TextBlock x:Name="SectionSubtitleText" Text="" FontSize="12.5" TextWrapping="Wrap" Foreground="{StaticResource WindowTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel x:Name="SectionContentHost" Spacing="12" HorizontalAlignment="Stretch" />
                         </StackPanel>
-                    </Border>
-                    <StackPanel x:Name="SectionContentHost" Spacing="14" />
-                </StackPanel>
-            </ScrollViewer>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

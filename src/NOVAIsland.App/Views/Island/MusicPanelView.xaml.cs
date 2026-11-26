@@ -1,4 +1,5 @@
 using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -17,10 +18,12 @@ public sealed partial class MusicPanelView : UserControl
     private IslandViewModel? _island;
     private LyricsViewModel? _lyrics;
     private bool _updatingUi;
+    private string? _lastArtworkUri;
 
     public MusicPanelView()
     {
         InitializeComponent();
+        BuildCalendarStrip();
     }
 
     public void Bind(MusicViewModel music, SystemViewModel system, IslandViewModel island, LyricsViewModel lyrics)
@@ -30,13 +33,95 @@ public sealed partial class MusicPanelView : UserControl
         _island = island;
         _lyrics = lyrics;
 
-        _music.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
+        _music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+            {
+                RefreshTimelineOnly();
+            }
+            else
+            {
+                Refresh();
+            }
+        });
         _system.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshVolume);
+        _lyrics.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshGlance);
         Refresh();
         RefreshVolume();
+        RefreshGlance();
     }
 
     public void UpdateSpectrum(ReadOnlySpan<float> bands) => Equalizer.UpdateSpectrum(bands);
+
+    private void BuildCalendarStrip()
+    {
+        var today = DateTime.Now;
+        CalendarMonthText.Text = today.ToString("MMM");
+        WeekDaysStrip.Children.Clear();
+
+        for (var offset = -2; offset <= 3; offset++)
+        {
+            var day = today.AddDays(offset);
+            var isToday = offset == 0;
+
+            var col = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center };
+            col.Children.Add(new TextBlock
+            {
+                Text = day.ToString("ddd")[..2],
+                FontSize = 9.5,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 113, 113, 122))
+            });
+            col.Children.Add(new TextBlock
+            {
+                Text = day.Day.ToString("00"),
+                FontSize = 11.5,
+                FontWeight = isToday ? FontWeights.Bold : FontWeights.Normal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = isToday
+                    ? (Brush)Application.Current.Resources["NovaAccentBrush"]
+                    : new SolidColorBrush(Color.FromArgb(255, 180, 184, 196))
+            });
+            WeekDaysStrip.Children.Add(col);
+        }
+    }
+
+    private void RefreshGlance()
+    {
+        if (_lyrics is null) return;
+        if (_lyrics.Lines.Count > 0 && _lyrics.ActiveLineIndex >= 0 && _lyrics.ActiveLineIndex < _lyrics.Lines.Count)
+        {
+            GlanceHeadlineText.Text = _lyrics.Lines[_lyrics.ActiveLineIndex].Text;
+            GlanceSubtextText.Text = $"{_lyrics.Source} · Live synced lyrics";
+        }
+        else if (!string.IsNullOrWhiteSpace(_lyrics.TrackTitle))
+        {
+            GlanceHeadlineText.Text = _lyrics.TrackTitle;
+            GlanceSubtextText.Text = _lyrics.IsLoading ? "Fetching LRCLIB lyrics..." : "Tap Live Lyrics to view";
+        }
+        else
+        {
+            GlanceHeadlineText.Text = DateTime.Now.ToString("dddd, MMM d");
+            GlanceSubtextText.Text = "Chrome · Edge · Opera ready";
+        }
+    }
+
+    private void RefreshTimelineOnly()
+    {
+        if (_music is null || _music.CurrentSession is null) return;
+        _updatingUi = true;
+        try
+        {
+            SeekSlider.Maximum = Math.Max(1, _music.CurrentSession.DurationSeconds);
+            SeekSlider.Value = Math.Clamp(_music.LivePositionSeconds, 0, SeekSlider.Maximum);
+            ElapsedTimeText.Text = _music.FormattedPosition;
+            RemainingTimeText.Text = _music.FormattedDuration;
+        }
+        finally
+        {
+            _updatingUi = false;
+        }
+    }
 
     public void Refresh()
     {
@@ -49,24 +134,31 @@ public sealed partial class MusicPanelView : UserControl
 
             if (session is null)
             {
-                AlbumArtwork.SourceUri = null;
+                if (_lastArtworkUri is not null)
+                {
+                    _lastArtworkUri = null;
+                    AlbumArtwork.SourceUri = null;
+                }
                 SourceBadgeText.Text = _music.IsBrowserConnected
                     ? $"{_music.ConnectedBrowserName} · Ready"
                     : "Browser Media Disabled";
                 TrackTitleText.Text = "No active browser media";
-                TrackArtistText.Text = "Play audio or video in Chrome, Edge, or Opera";
+                TrackArtistText.Text = "Play in Chrome, Edge, or Opera";
                 SeekSlider.Maximum = 100;
                 SeekSlider.Value = 0;
                 ElapsedTimeText.Text = "0:00";
-                RemainingTimeText.Text = "-0:00 / 0:00";
+                RemainingTimeText.Text = "0:00";
                 PlayPauseIcon.Glyph = "\uE768";
             }
             else
             {
-                AlbumArtwork.SourceUri = session.ArtworkUrl;
+                if (!string.Equals(_lastArtworkUri, session.ArtworkUrl, StringComparison.Ordinal))
+                {
+                    _lastArtworkUri = session.ArtworkUrl;
+                    AlbumArtwork.SourceUri = session.ArtworkUrl;
+                }
                 var host = string.IsNullOrWhiteSpace(session.UrlHost) ? session.Browser : session.UrlHost;
-                var stateLabel = session.PlaybackState == BrowserPlaybackState.Playing ? "Playing" : "Paused";
-                SourceBadgeText.Text = $"{host} · {stateLabel} · {session.Browser}";
+                SourceBadgeText.Text = $"{host} · {session.Browser}";
                 TrackTitleText.Text = string.IsNullOrWhiteSpace(session.Title) ? session.TabTitle : session.Title;
                 TrackArtistText.Text = string.IsNullOrWhiteSpace(session.Album)
                     ? session.Artist
@@ -75,7 +167,7 @@ public sealed partial class MusicPanelView : UserControl
                 SeekSlider.Maximum = Math.Max(1, session.DurationSeconds);
                 SeekSlider.Value = Math.Clamp(_music.LivePositionSeconds, 0, SeekSlider.Maximum);
                 ElapsedTimeText.Text = _music.FormattedPosition;
-                RemainingTimeText.Text = $"{_music.FormattedRemaining} / {_music.FormattedDuration}";
+                RemainingTimeText.Text = _music.FormattedDuration;
                 PlayPauseIcon.Glyph = _music.IsPlaying ? "\uE769" : "\uE768";
 
                 PrevButton.IsEnabled = session.CanPrevious || session.CanSeek;
@@ -105,12 +197,21 @@ public sealed partial class MusicPanelView : UserControl
     {
         if (_music is null) return;
         BrowserTabsStrip.Children.Clear();
-        foreach (var tab in _music.BrowserTabs)
+        var tabsSnapshot = _music.BrowserTabs.ToList();
+        BrowserTabsRow.Visibility = tabsSnapshot.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+
+        foreach (var tab in tabsSnapshot)
         {
             var active = _music.CurrentSession?.TabId == tab.TabId;
+            var label = string.IsNullOrWhiteSpace(tab.Title) ? tab.UrlHost : tab.Title;
             var btn = new Button
             {
-                Content = string.IsNullOrWhiteSpace(tab.Title) ? tab.UrlHost : tab.Title,
+                Content = new TextBlock
+                {
+                    Text = label,
+                    MaxWidth = 170,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                },
                 Padding = new Thickness(10, 4, 10, 4),
                 CornerRadius = new CornerRadius(6),
                 FontSize = 11.5,
@@ -159,15 +260,14 @@ public sealed partial class MusicPanelView : UserControl
 
     private async void OnSeekCompleted(object sender, PointerRoutedEventArgs e)
     {
-        if (_updatingUi || _music is null) return;
-        await _music.SeekAsync(SeekSlider.Value);
+        if (_music is not null) await _music.SeekAsync(SeekSlider.Value);
     }
 
     private async void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_updatingUi || _system is null) return;
-        var val = (int)Math.Round(e.NewValue);
-        await _system.SetVolumeAsync(val, val == 0);
+        var vol = (int)Math.Round(e.NewValue);
+        await _system.SetVolumeAsync(vol, vol == 0);
     }
 
     private async void OnToggleMuteClick(object sender, RoutedEventArgs e)
@@ -175,8 +275,10 @@ public sealed partial class MusicPanelView : UserControl
         if (_system is not null) await _system.ToggleMuteAsync();
     }
 
-    private void OnOpenLyricsClick(object sender, RoutedEventArgs e) =>
+    private void OnOpenLyricsClick(object sender, RoutedEventArgs e)
+    {
         _island?.SetMode(IslandMode.Lyrics);
+    }
 
     private void OnOpenFullscreenLyricsClick(object sender, RoutedEventArgs e)
     {

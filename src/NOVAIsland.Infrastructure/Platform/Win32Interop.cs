@@ -9,7 +9,15 @@ namespace NOVAIsland.Infrastructure.Platform;
 /// </summary>
 public static partial class Win32Interop
 {
+    public const int GWL_STYLE = -16;
     public const int GWL_EXSTYLE = -20;
+    public const long WS_CAPTION = 0x00C00000L;
+    public const long WS_THICKFRAME = 0x00040000L;
+    public const long WS_MINIMIZEBOX = 0x00020000L;
+    public const long WS_MAXIMIZEBOX = 0x00010000L;
+    public const long WS_SYSMENU = 0x00080000L;
+    public const long WS_POPUP = 0x80000000L;
+
     public const int WS_EX_TRANSPARENT = 0x00000020;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
     public const int WS_EX_LAYERED = 0x00080000;
@@ -19,15 +27,28 @@ public static partial class Win32Interop
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_FRAMECHANGED = 0x0020;
     public const uint SWP_SHOWWINDOW = 0x0040;
 
     public static readonly IntPtr HWND_TOPMOST = new(-1);
     public static readonly IntPtr HWND_NOTOPMOST = new(-2);
     public static readonly IntPtr HWND_MESSAGE = new(-3);
 
+    public const uint WM_GETMINMAXINFO = 0x0024;
+    public const uint WM_NCCALCSIZE = 0x0083;
     public const uint WM_NCHITTEST = 0x0084;
     public const uint WM_CLIPBOARDUPDATE = 0x031D;
     public const uint WM_HOTKEY = 0x0312;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MINMAXINFO
+    {
+        public POINT ptReserved;
+        public POINT ptMaxSize;
+        public POINT ptMaxPosition;
+        public POINT ptMinTrackSize;
+        public POINT ptMaxTrackSize;
+    }
 
     public static readonly IntPtr HTTRANSPARENT = new(-1);
     public static readonly IntPtr HTCLIENT = new(1);

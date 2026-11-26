@@ -9,7 +9,7 @@ public static class AppConstants
 {
     public const string DefaultAppName = "DOOM Island";
     public const string DefaultShortName = "DOOM";
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "2.3.0";
     public const string AppDataFolderName = "DOOMIsland";
     public const string DatabaseFileName = "doom_island.db";
     public const string NativeMessagingHostName = "com.doomisland.host";

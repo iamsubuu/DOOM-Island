@@ -38,7 +38,17 @@ public sealed class SqliteSettingsStore : ISettingsStore
             }
 
             var loaded = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions);
-            return NormalizeDefaults(loaded);
+            var (normalized, migrated) = NormalizeDefaults(loaded);
+            if (migrated)
+            {
+                var updatedJson = JsonSerializer.Serialize(normalized, JsonOptions);
+                await using var updateCmd = conn.CreateCommand();
+                updateCmd.CommandText = "UPDATE app_settings SET json_payload = $json, updated_at_utc = $now WHERE id = 1;";
+                updateCmd.Parameters.AddWithValue("$json", updatedJson);
+                updateCmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                await updateCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+            return normalized;
         }
         finally
         {
@@ -92,11 +102,11 @@ public sealed class SqliteSettingsStore : ISettingsStore
         }
     }
 
-    private static AppSettings NormalizeDefaults(AppSettings? loaded)
+    private static (AppSettings Settings, bool Migrated) NormalizeDefaults(AppSettings? loaded)
     {
         if (loaded is null)
         {
-            return new AppSettings();
+            return (new AppSettings(), false);
         }
 
         loaded.General ??= new GeneralSettings();
@@ -115,6 +125,18 @@ public sealed class SqliteSettingsStore : ISettingsStore
             loaded.Shortcuts = AppSettings.CreateDefaultShortcuts();
         }
 
-        return loaded;
+        var migrated = false;
+        if (loaded.SchemaVersion < 230)
+        {
+            loaded.SchemaVersion = 230;
+            loaded.Position.ScreenPosition = Core.Enums.ScreenPosition.TopCenter;
+            loaded.Position.CustomY = 0;
+            loaded.General.StealthTopBar = true;
+            loaded.General.HoverToOpen = true;
+            loaded.General.CollapseBehavior = Core.Enums.CollapseBehavior.MouseLeave;
+            migrated = true;
+        }
+
+        return (loaded, migrated);
     }
 }

@@ -54,21 +54,25 @@ public sealed partial class IslandViewModel : ObservableObject
     public void SetMode(IslandMode mode) => Mode = mode;
 
     [RelayCommand]
-    public void Collapse(bool hasActiveMedia)
+    public void Collapse(bool hasActiveMedia) => Collapse(hasActiveMedia, stealthMode: false);
+
+    public void Collapse(bool hasActiveMedia, bool stealthMode)
     {
-        Mode = hasActiveMedia ? IslandMode.Music : IslandMode.Compact;
+        Mode = !stealthMode && hasActiveMedia ? IslandMode.Music : IslandMode.Compact;
     }
 
     [RelayCommand]
-    public void ToggleExpand(bool hasActiveMedia)
+    public void ToggleExpand(bool hasActiveMedia) => ToggleExpand(hasActiveMedia, stealthMode: false);
+
+    public void ToggleExpand(bool hasActiveMedia, bool stealthMode)
     {
         if (IsExpanded)
         {
-            Collapse(hasActiveMedia);
+            Collapse(hasActiveMedia, stealthMode);
         }
         else
         {
-            Mode = IslandMode.Expanded;
+            Mode = hasActiveMedia ? IslandMode.Expanded : IslandMode.System;
         }
     }
 }

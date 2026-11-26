@@ -16,7 +16,7 @@ $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 $shortcutPath = Join-Path $startMenu "DOOM Island.lnk"
 $wsh = New-Object -ComObject WScript.Shell
 $sc = $wsh.CreateShortcut($shortcutPath)
-$sc.TargetPath = Join-Path $InstallDir "NOVAIsland.App.exe"
+$sc.TargetPath = Join-Path $InstallDir "DOOMIsland.exe"
 $sc.WorkingDirectory = $InstallDir
 $sc.Description = "DOOM Island — Native Windows Dynamic Island"
 $sc.Save()

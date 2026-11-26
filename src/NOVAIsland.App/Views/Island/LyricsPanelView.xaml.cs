@@ -16,6 +16,7 @@ public sealed partial class LyricsPanelView : UserControl
     private LyricsViewModel? _lyrics;
     private MusicViewModel? _music;
     private SettingsViewModel? _settings;
+    private string? _lastArtworkUri;
 
     public LyricsPanelView()
     {
@@ -29,14 +30,29 @@ public sealed partial class LyricsPanelView : UserControl
         _settings = settings;
 
         _lyrics.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshAll);
-        _music.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshHeaderAndTime);
+        _music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+            {
+                ProgressText.Text = $"{_music.FormattedPosition} / {_music.FormattedDuration}";
+            }
+            else
+            {
+                RefreshHeaderAndTime();
+            }
+        });
         RefreshAll();
     }
 
     private void RefreshHeaderAndTime()
     {
         if (_music is null) return;
-        MiniArt.SourceUri = _music.CurrentSession?.ArtworkUrl;
+        var nextArt = _music.CurrentSession?.ArtworkUrl;
+        if (!string.Equals(_lastArtworkUri, nextArt, StringComparison.Ordinal))
+        {
+            _lastArtworkUri = nextArt;
+            MiniArt.SourceUri = nextArt;
+        }
         ProgressText.Text = $"{_music.FormattedPosition} / {_music.FormattedDuration}";
         MiniPlayIcon.Glyph = _music.IsPlaying ? "\uE769" : "\uE768";
     }
@@ -96,18 +112,22 @@ public sealed partial class LyricsPanelView : UserControl
 
             var btn = new Button
             {
-                Content = line.Text,
+                Content = new TextBlock
+                {
+                    Text = line.Text,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = isActive ? baseFontSize : Math.Max(12.5, baseFontSize - 2),
+                    FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal,
+                    Foreground = new SolidColorBrush(
+                        isActive ? Colors.White :
+                        dist == 1 ? Color.FromArgb(255, 200, 200, 210) :
+                        Color.FromArgb(255, 132, 132, 146))
+                },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Background = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                Padding = new Thickness(8, 3, 8, 3),
-                FontSize = isActive ? baseFontSize : Math.Max(12, baseFontSize - 2),
-                FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal,
-                Foreground = new SolidColorBrush(
-                    isActive ? Colors.White :
-                    dist == 1 ? Color.FromArgb(255, 161, 161, 170) :
-                    Color.FromArgb(255, 82, 82, 91))
+                Padding = new Thickness(6, 4, 6, 4)
             };
 
             var capturedTime = line.TimeSeconds;

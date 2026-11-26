@@ -1,7 +1,8 @@
 # DOOM Island — Development Status
 
 > **Last Updated:** 2026-11-26  
-> **Current Phase:** All Stages (1–16) Implemented & Verified  
+> **Version:** `2.3.0` (`DOOMIsland.exe`)  
+> **Current Phase:** All Stages (1–16) Implemented, Polished & Verified  
 > **Policy:** A feature is listed under **Completed Features** ONLY when its native WinUI 3 / C# / Extension implementation is genuinely implemented, integrated, and verified.
 
 ---
@@ -10,7 +11,7 @@
 
 - **Solution & Architecture (`Stage 1–3`):** `NOVAIsland.sln` with `NOVAIsland.Core`, `NOVAIsland.Services`, `NOVAIsland.Infrastructure`, `NOVAIsland.BrowserHost`, `NOVAIsland.BrowserExtension`, `NOVAIsland.App`, and `NOVAIsland.Tests` targeting `.NET 10` + `Microsoft.WindowsAppSDK 2.7.0`.
 - **WinUI 3 Design System & Bundled Typography (`Stage 4`):** Pure-black `#000000` island material, Dark/Light/System windows, dynamic `NovaAccentBrush`, bundled `Plus Jakarta Sans`, `Manrope`, `Outfit`, `JetBrains Mono` fonts, `AudioEqualizerControl`, `ProgressRingControl`, and `SafeMediaImage`.
-- **Borderless Floating Dynamic Island & Composition Animations (`Stage 5`):** `DynamicIslandWindow` using `TransparentTintBackdrop`, `WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, `OverlappedPresenter.SetBorderAndTitleBar(false, false)`, `WM_NCHITTEST` pass-through outside pill bounds, drag-to-reposition, multi-monitor Per-Monitor V2 DPI positioning, `Microsoft.UI.Composition` spring physics (`Fluid`, `Snappy`, `Silk`, `Instant`), idle breathing, and notification arrival bounce.
+- **Borderless Floating Dynamic Island & Composition Animations (`Stage 5`):** `DynamicIslandWindow` (`DOOMIsland.exe`) using `TransparentTintBackdrop`, `WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, `OverlappedPresenter.SetBorderAndTitleBar(false, false)`, `WM_NCHITTEST` pass-through outside pill bounds, stealth invisible top-edge hover bar (`StealthTopBar` + `HoverToOpen`), drag-to-reposition, multi-monitor Per-Monitor V2 DPI positioning, `Microsoft.UI.Composition` spring physics (`Fluid`, `Snappy`, `Silk`, `Instant`), idle breathing, and notification arrival bounce.
 - **Chrome/Edge Manifest V3 Extension & Native Messaging Host (`Stage 6–7`):** `NOVAIsland.BrowserExtension` (`manifest.json`, `content.js` using `MediaSession` + `HTMLMediaElement`, `background.js` multi-tab arbitration & deduplication, `popup/`) + `NOVAIsland.BrowserHost` (4-byte uint32 LE JSON framing + user-SID ACL Named Pipe bridge) + `Register-NativeMessagingHost.ps1`. Verified end-to-end with live process + Named Pipe integration test.
 - **Browser-Driven Music Player & WASAPI Equalizer (`Stage 8`):** `MusicPanelView` + `Music` compact pill + `CompositeBrowserMediaBridge` (automatic zero-config Windows SMTC detection & control for **Google Chrome, Microsoft Edge, and Opera** + `BrowserMediaBridgeService` Native Messaging extension priority) + `WasapiAudioVisualizerService` (`NAudio` loopback FFT). Zero Spotify Web API/OAuth usage.
 - **Independent LRCLIB Lyrics & Fullscreen Stage (`Stage 9`):** `LrclibLyricsService` (`/api/get`, `/api/search`), `LrcParser`, SQLite `lyrics_cache`, `LyricsPanelView`, and `FullscreenLyricsWindow` with ambient artwork backdrop and slide-over manual search drawer.
@@ -19,9 +20,9 @@
   - `WindowsSystemMonitorService` (Battery, CoreAudio Volume & Output Device switcher, WMI/DDC-CI Brightness where supported, Wi-Fi SSID/signal, CPU/RAM, Mic/Camera privacy indicators).
   - `WindowsActivityMonitorService` (native quick screenshot capture, `Pictures\Screenshots` watcher, `Downloads` partial download watcher).
   - `TimerViewModel` & `TimerPanelView` (Pomodoro, Countdown, Stopwatch with laps, progress ring, background 100ms/1s ticks).
-- **Dashboard Hub & 14-Section Settings (`Stage 12`):** `DashboardWindow` and searchable `SettingsWindow` with all 14 sections (`General` through `About`), live Appearance & Position previews, real SQLite/disk MB accounting, JSON export, and factory reset.
+- **Dashboard Hub & 14-Section Settings (`Stage 12`):** `DashboardWindow` and responsive searchable `SettingsWindow` (adapts between wide sidebar and compact dropdown layout with uniform control alignment) covering all 14 sections (`General` through `About`), live Appearance & Position previews, real SQLite/disk MB accounting, JSON export, and factory reset.
 - **Tray, Startup, Global Hotkeys & Lock Masking (`Stage 13`):** `H.NotifyIcon.WinUI` tray icon + menu, `StartupRegistrationService`, `GlobalHotkeyService` (`RegisterHotKey`), and `SessionLockWatcher` (`WTSRegisterSessionNotification`).
-- **Security Audit & Packaging (`Stage 14–16`):** Security review documented in `docs/security-review.md`; standalone native Windows installer (`DOOMIsland-Setup-x64-v1.0.0.exe`), Release self-contained `win-x64` artifacts (`DOOMIsland-Win64-Portable-v1.0.0.zip`, `DOOMIsland-BrowserExtension-MV3.zip`), `Install-DOOMIsland.ps1`, `Uninstall-DOOMIsland.ps1`, and `DOOMIsland.iss` created and verified end-to-end.
+- **Security Audit & Packaging (`Stage 14–16`):** Security review documented in `docs/security-review.md`; Authenticode-signed standalone native Windows installer (`DOOMIsland-Setup-x64-v2.3.0.exe`), Release self-contained `win-x64` artifacts (`DOOMIsland-Win64-Portable-v2.3.0.zip`, `DOOMIsland-BrowserExtension-MV3.zip`), `Install-DOOMIsland.ps1`, `Uninstall-DOOMIsland.ps1`, `Sign-Artifacts.ps1`, and `DOOMIsland.iss` created and verified end-to-end.
 
 ---
 
@@ -52,7 +53,7 @@
 
 | Suite / Check | Passed | Failed | Skipped | Notes |
 |---|---|---|---|---|
-| `NOVAIsland.Tests` (Core, SQLite, LRCLIB, Framer, Bridge E2E) | 13 | 0 | 0 | `dotnet test` (`net10.0-windows10.0.19041.0`) — 3 s |
-| `NOVAIsland.App` Debug & Release Self-Contained Launch | 2 | 0 | 0 | Clean launch + `doom_island.db` WAL initialization verified (PID 10320 via Setup EXE) |
+| `NOVAIsland.Tests` (Core, SQLite, LRCLIB, Framer, Bridge E2E) | 14 | 0 | 0 | `dotnet test` (`net10.0-windows10.0.19041.0`) — 3 s |
+| `DOOMIsland.exe` Debug & Release Self-Contained Launch | 2 | 0 | 0 | Clean launch + `doom_island.db` WAL initialization verified |
 | `NOVAIsland.BrowserExtension` JS Syntax (`node --check`) | 3 | 0 | 0 | `background.js`, `content.js`, `popup.js` |
-| `DOOMIsland-Setup-x64-v1.0.0.exe` / `Uninstall-DOOMIsland.ps1` E2E | 1 | 0 | 0 | Silent EXE install, Chrome/Opera/Edge Native Messaging registration, `BrowserHost --self-check`, app launch, clean uninstall |
+| `DOOMIsland-Setup-x64-v2.3.0.exe` / `Uninstall-DOOMIsland.ps1` E2E | 1 | 0 | 0 | Signed silent EXE install, Chrome/Opera/Edge Native Messaging registration, `BrowserHost --self-check`, `DOOMIsland.exe` launch, clean uninstall |

@@ -56,8 +56,12 @@ public sealed partial class SystemPanelView : UserControl
                 var selected = dev.Id == m.ActiveAudioDeviceId;
                 var btn = new Button
                 {
-                    Content = dev.Name,
-                    Width = 240,
+                    Content = new TextBlock
+                    {
+                        Text = dev.Name,
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    },
+                    Width = 228,
                     HorizontalContentAlignment = HorizontalAlignment.Left,
                     FontSize = 11.5,
                     Padding = new Thickness(10, 6, 10, 6),

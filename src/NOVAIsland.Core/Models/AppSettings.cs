@@ -9,8 +9,10 @@ public sealed class GeneralSettings
     public string AppShortName { get; set; } = AppConstants.DefaultShortName;
     public bool LaunchOnStartup { get; set; }
     public bool AlwaysOnTop { get; set; } = true;
+    public bool StealthTopBar { get; set; } = true;
+    public bool HoverToOpen { get; set; } = true;
     public int AutoCollapseSeconds { get; set; }
-    public CollapseBehavior CollapseBehavior { get; set; } = CollapseBehavior.OutsideClick;
+    public CollapseBehavior CollapseBehavior { get; set; } = CollapseBehavior.MouseLeave;
     public DoubleClickAction DoubleClickAction { get; set; } = DoubleClickAction.ToggleLyrics;
     public bool IslandEnabled { get; set; } = true;
     public bool FocusDndMode { get; set; }
@@ -20,7 +22,7 @@ public sealed class PositionSettings
 {
     public ScreenPosition ScreenPosition { get; set; } = ScreenPosition.TopCenter;
     public double CustomX { get; set; } = 50;
-    public double CustomY { get; set; } = 12;
+    public double CustomY { get; set; } = 0;
     public string Monitor { get; set; } = "Primary";
     public bool RememberLastPosition { get; set; } = true;
 }
@@ -136,6 +138,7 @@ public sealed class PrivacySettings
 
 public sealed class AppSettings
 {
+    public int SchemaVersion { get; set; } = 230;
     public GeneralSettings General { get; set; } = new();
     public PositionSettings Position { get; set; } = new();
     public AppearanceSettings Appearance { get; set; } = new();

@@ -3,7 +3,6 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using NOVAIsland.Core.Configuration;
 using NOVAIsland.Core.Enums;
@@ -20,11 +19,14 @@ namespace NOVAIsland.App.Views.Settings;
 
 public sealed partial class SettingsWindow : Window
 {
-    private sealed record SectionMeta(SettingsSectionId Id, string Label, string Subtitle, string[] Keywords);
+    private sealed record SectionMeta(SettingsSectionId Id, string Label, string Subtitle, string[] Keywords)
+    {
+        public override string ToString() => Label;
+    }
 
     private static readonly SectionMeta[] Sections =
     [
-        new(SettingsSectionId.General, "General", "Brand name, startup, always on top, and collapse behavior", ["name", "startup", "top", "collapse", "double"]),
+        new(SettingsSectionId.General, "General", "Brand name, stealth top bar, hover open, startup, and collapse behavior", ["name", "stealth", "hover", "startup", "top", "collapse", "double"]),
         new(SettingsSectionId.Appearance, "Appearance", "Dark/Light/System theme, accent color, font, dimensions & live preview", ["theme", "accent", "font", "width", "height", "radius", "opacity", "black"]),
         new(SettingsSectionId.Position, "Position & Display", "Top center, left, right, custom X/Y, monitor & interactive canvas", ["position", "monitor", "custom", "x", "y"]),
         new(SettingsSectionId.Animation, "Animation", "Composition spring presets, speed, hover scale, bounce & breathing", ["animation", "spring", "fluid", "snappy", "silk", "motion"]),
@@ -37,8 +39,11 @@ public sealed partial class SettingsWindow : Window
         new(SettingsSectionId.Shortcuts, "Shortcuts", "Global Windows keyboard bindings", ["shortcuts", "hotkeys", "alt", "ctrl"]),
         new(SettingsSectionId.Privacy, "Privacy", "Local-only processing, private browsing pause & lock screen masking", ["privacy", "local", "lock", "logs"]),
         new(SettingsSectionId.Storage, "Storage", "Real SQLite & disk cache footprint, cleanup, JSON export & reset", ["storage", "cache", "sqlite", "export", "reset"]),
-        new(SettingsSectionId.About, "About", "Version, WinUI 3 + Native Messaging architecture & stack details", ["about", "version", "winui"])
+        new(SettingsSectionId.About, "About", "Version, WinUI 3 + Chrome/Edge/Opera media & stack details", ["about", "version", "winui"])
     ];
+
+    private const double CompactLayoutThreshold = 760.0;
+    private const double StandardControlWidth = 220.0;
 
     private readonly SettingsViewModel _settingsVm;
     private readonly IslandViewModel _islandVm;
@@ -49,6 +54,9 @@ public sealed partial class SettingsWindow : Window
     private readonly StorageFootprintService _footprint;
     private readonly ILyricsCacheRepository _lyricsCache;
     private readonly IClipboardRepository _clipboardRepo;
+    private readonly DispatcherTimer _saveDebounceTimer = new();
+    private bool _syncingCompactNav;
+    private bool _isCompactWidth;
 
     public SettingsWindow(
         SettingsViewModel settingsVm,
@@ -72,6 +80,14 @@ public sealed partial class SettingsWindow : Window
         _lyricsCache = lyricsCache;
         _clipboardRepo = clipboardRepo;
 
+        _saveDebounceTimer.Interval = TimeSpan.FromMilliseconds(180);
+        _saveDebounceTimer.Tick += async (_, _) =>
+        {
+            _saveDebounceTimer.Stop();
+            await _settingsVm.SaveAsync();
+        };
+
+        SystemBackdrop = new DesktopAcrylicBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
@@ -79,6 +95,13 @@ public sealed partial class SettingsWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         AppWindow.GetFromWindowId(windowId).Resize(new SizeInt32(1020, 680));
 
+        foreach (var sec in Sections)
+        {
+            CompactSectionCombo.Items.Add(sec);
+        }
+
+        SizeChanged += OnWindowSizeChanged;
+        UpdateResponsiveLayout(Bounds.Width);
         RebuildSidebar();
         RenderActiveSection();
     }
@@ -88,6 +111,34 @@ public sealed partial class SettingsWindow : Window
         _settingsVm.ActiveSection = section;
         RebuildSidebar();
         RenderActiveSection();
+    }
+
+    private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs args)
+    {
+        UpdateResponsiveLayout(args.Size.Width);
+    }
+
+    private void UpdateResponsiveLayout(double width)
+    {
+        var compact = width > 0 && width < CompactLayoutThreshold;
+        SidebarColumn.Width = compact ? new GridLength(0) : new GridLength(236);
+        SidebarContainer.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactNavBar.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_isCompactWidth != compact)
+        {
+            _isCompactWidth = compact;
+            RenderActiveSection();
+        }
+    }
+
+    private void OnCompactSectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingCompactNav) return;
+        if (CompactSectionCombo.SelectedItem is SectionMeta meta)
+        {
+            NavigateTo(meta.Id);
+        }
     }
 
     private void OnSearchChanged(object sender, TextChangedEventArgs e) => RebuildSidebar();
@@ -124,6 +175,22 @@ public sealed partial class SettingsWindow : Window
             btn.Click += (_, _) => NavigateTo(id);
             SidebarNavPanel.Children.Add(btn);
         }
+
+        _syncingCompactNav = true;
+        try
+        {
+            CompactSectionCombo.SelectedItem = Sections.FirstOrDefault(s => s.Id == _settingsVm.ActiveSection);
+        }
+        finally
+        {
+            _syncingCompactNav = false;
+        }
+    }
+
+    private void ScheduleSave()
+    {
+        _saveDebounceTimer.Stop();
+        _saveDebounceTimer.Start();
     }
 
     private async void RenderActiveSection()
@@ -142,7 +209,13 @@ public sealed partial class SettingsWindow : Window
         {
             case SettingsSectionId.General:
                 AddTextRow("Application display name", "Configurable brand name propagated across windows and tray.", s.General.AppName, v => s.General.AppName = v);
-                AddTextRow("Compact pill wordmark", "Short label shown in the idle Dynamic Island pill.", s.General.AppShortName, v => s.General.AppShortName = v);
+                AddTextRow("Compact pill wordmark", "Short label shown when stealth mode is off.", s.General.AppShortName, v => s.General.AppShortName = v);
+                AddToggleRow("Stealth top-edge invisible bar", "Hide the idle island as an invisible bar along the top screen edge.", s.General.StealthTopBar, v =>
+                {
+                    s.General.StealthTopBar = v;
+                    _islandVm.Collapse(_islandVm.Music.HasActiveMedia, v);
+                });
+                AddToggleRow("Hover cursor to open island", "Automatically open the island when hovering the top bar.", s.General.HoverToOpen, v => s.General.HoverToOpen = v);
                 AddToggleRow("Launch on Windows startup", "Register under current user Run key to start with Windows.", s.General.LaunchOnStartup, v =>
                 {
                     s.General.LaunchOnStartup = v;
@@ -161,7 +234,7 @@ public sealed partial class SettingsWindow : Window
                 AddEnumRow("Island material preset", Enum.GetValues<ThemePreset>(), s.Appearance.Theme, v => s.Appearance.Theme = v);
                 AddAccentSwatches(s.Appearance);
                 AddEnumRow("Font family", Enum.GetValues<FontFamilyOption>(), s.Appearance.FontFamily, v => s.Appearance.FontFamily = v);
-                AddSliderRow("Compact island width (px)", 170, 300, s.Appearance.IslandWidth, v => s.Appearance.IslandWidth = v);
+                AddSliderRow("Compact island width (px)", 140, 300, s.Appearance.IslandWidth, v => s.Appearance.IslandWidth = v);
                 AddSliderRow("Compact island height (px)", 32, 48, s.Appearance.IslandHeight, v => s.Appearance.IslandHeight = v);
                 AddSliderRow("Corner radius (px)", 14, 32, s.Appearance.CornerRadius, v => s.Appearance.CornerRadius = v);
                 AddSliderRow("Surface opacity (%)", 80, 100, s.Appearance.Opacity, v => s.Appearance.Opacity = v);
@@ -173,13 +246,13 @@ public sealed partial class SettingsWindow : Window
                 AddButtonRow("Reset Position", "Return island to Top Center.", "Reset", async () => { await _settingsVm.ResetPositionAsync(); RenderActiveSection(); });
                 AddEnumRow("Screen position preset", Enum.GetValues<ScreenPosition>(), s.Position.ScreenPosition, v => s.Position.ScreenPosition = v);
                 AddSliderRow("Custom horizontal X (%)", 12, 88, s.Position.CustomX, v => { s.Position.ScreenPosition = ScreenPosition.Custom; s.Position.CustomX = v; });
-                AddSliderRow("Custom vertical Y (px)", 8, 140, s.Position.CustomY, v => { s.Position.ScreenPosition = ScreenPosition.Custom; s.Position.CustomY = v; });
+                AddSliderRow("Custom vertical Y (px)", 0, 140, s.Position.CustomY, v => { s.Position.ScreenPosition = ScreenPosition.Custom; s.Position.CustomY = v; });
                 AddMonitorSelector(s.Position);
                 AddToggleRow("Remember last position", "Persist custom X/Y across launches.", s.Position.RememberLastPosition, v => s.Position.RememberLastPosition = v);
                 break;
 
             case SettingsSectionId.Animation:
-                AddButtonRow("Test Spring Morph", "Toggle the live floating island between compact and expanded.", "Test Morph", () => { _islandVm.ToggleExpand(_islandVm.Music.HasActiveMedia); return Task.CompletedTask; });
+                AddButtonRow("Test Spring Morph", "Toggle the live floating island between collapsed and expanded.", "Test Morph", () => { _islandVm.ToggleExpand(_islandVm.Music.HasActiveMedia, s.General.StealthTopBar); return Task.CompletedTask; });
                 AddEnumRow("Physics preset", Enum.GetValues<AnimationPreset>(), s.Animation.Preset, v => s.Animation.Preset = v);
                 AddToggleRow("Reduce motion", "Replace spring motion with minimal transitions.", s.Animation.ReduceMotion, v => s.Animation.ReduceMotion = v);
                 AddToggleRow("Hover scale", "Subtly scale compact pill on hover.", s.Animation.HoverExpand, v => s.Animation.HoverExpand = v);
@@ -277,24 +350,60 @@ public sealed partial class SettingsWindow : Window
                 break;
 
             case SettingsSectionId.About:
-                AddInfoBanner($"{_settingsVm.ResolvedAppName} v{AppConstants.AppVersion} · Native WinUI 3 (.NET 10 / Windows App SDK 2.7) · Chrome/Edge MV3 Native Messaging + LRCLIB + SQLite.");
+                AddInfoBanner($"{_settingsVm.ResolvedAppName} v{AppConstants.AppVersion} · Native WinUI 3 (.NET 10 / Windows App SDK 2.7) · Chrome/Edge/Opera Auto Media + MV3 Extension + LRCLIB + SQLite.");
                 break;
         }
     }
 
     private void AddToggleRow(string title, string? desc, bool initial, Action<bool> onChanged)
     {
-        var toggle = new ToggleSwitch { Style = (Style)Application.Current.Resources["NovaToggleSwitchStyle"], IsOn = initial };
+        var toggle = new ToggleSwitch
+        {
+            Style = (Style)Application.Current.Resources["NovaToggleSwitchStyle"],
+            IsOn = initial,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Padding = new Thickness(0)
+        };
         toggle.Toggled += async (_, _) => { onChanged(toggle.IsOn); await _settingsVm.SaveAsync(); };
         AddSettingRow(title, desc, toggle);
     }
 
     private void AddSliderRow(string title, double min, double max, double initial, Action<double> onChanged)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Width = 220 };
-        var label = new TextBlock { Text = $"{initial:0}", Width = 36, VerticalAlignment = VerticalAlignment.Center, Style = (Style)Application.Current.Resources["MonoTabularTextStyle"] };
-        var slider = new Slider { Minimum = min, Maximum = max, Value = initial, Width = 170, Style = (Style)Application.Current.Resources["NovaSliderStyle"] };
-        slider.ValueChanged += async (_, e) => { label.Text = $"{e.NewValue:0}"; onChanged(e.NewValue); await _settingsVm.SaveAsync(); };
+        var panel = new Grid
+        {
+            Width = StandardControlWidth,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            ColumnSpacing = 10
+        };
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
+
+        var label = new TextBlock
+        {
+            Text = $"{initial:0}",
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Style = (Style)Application.Current.Resources["MonoTabularTextStyle"]
+        };
+        var slider = new Slider
+        {
+            Minimum = min,
+            Maximum = max,
+            Value = Math.Clamp(initial, min, max),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
+            Style = (Style)Application.Current.Resources["NovaSliderStyle"]
+        };
+        slider.ValueChanged += (_, e) =>
+        {
+            label.Text = $"{e.NewValue:0}";
+            onChanged(e.NewValue);
+            ScheduleSave();
+        };
+
+        Grid.SetColumn(slider, 0);
+        Grid.SetColumn(label, 1);
         panel.Children.Add(slider);
         panel.Children.Add(label);
         AddSettingRow(title, null, panel);
@@ -302,14 +411,23 @@ public sealed partial class SettingsWindow : Window
 
     private void AddTextRow(string title, string? desc, string initial, Action<string> onChanged)
     {
-        var box = new TextBox { Text = initial, Width = 200 };
+        var box = new TextBox
+        {
+            Text = initial,
+            Width = StandardControlWidth,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         box.LostFocus += async (_, _) => { onChanged(box.Text); await _settingsVm.SaveAsync(); };
         AddSettingRow(title, desc, box);
     }
 
     private void AddEnumRow<T>(string title, T[] values, T current, Action<T> onChanged) where T : struct, Enum
     {
-        var combo = new ComboBox { Width = 210 };
+        var combo = new ComboBox
+        {
+            Width = StandardControlWidth,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         foreach (var v in values) combo.Items.Add(v);
         combo.SelectedItem = current;
         combo.SelectionChanged += async (_, _) =>
@@ -321,35 +439,75 @@ public sealed partial class SettingsWindow : Window
 
     private void AddButtonRow(string title, string desc, string btnLabel, Func<Task> onClick)
     {
-        var btn = new Button { Content = btnLabel, Padding = new Thickness(14, 6, 14, 6), CornerRadius = new CornerRadius(8) };
+        var btn = new Button
+        {
+            Content = btnLabel,
+            MinWidth = 96,
+            Padding = new Thickness(14, 6, 14, 6),
+            CornerRadius = new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         btn.Click += async (_, _) => await onClick();
         AddSettingRow(title, desc, btn);
     }
 
-    private void AddSettingRow(string title, string? desc, UIElement control)
+    private void AddSettingRow(string title, string? desc, FrameworkElement control)
     {
         var border = new Border
         {
             BorderBrush = (Brush)Application.Current.Resources["WindowDividerBrush"],
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(0, 10, 0, 12)
+            Padding = new Thickness(0, 10, 0, 12),
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        var grid = new Grid { ColumnSpacing = 16 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var left = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-        left.Children.Add(new TextBlock { Text = title, FontSize = 13.5, FontWeight = FontWeights.Medium, Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"] });
+        left.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 13.5,
+            FontWeight = FontWeights.Medium,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"]
+        });
         if (!string.IsNullOrWhiteSpace(desc))
         {
-            left.Children.Add(new TextBlock { Text = desc, FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"] });
+            left.Children.Add(new TextBlock
+            {
+                Text = desc,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"]
+            });
         }
 
-        Grid.SetColumn(left, 0);
-        Grid.SetColumn(control as FrameworkElement, 1);
-        grid.Children.Add(left);
-        grid.Children.Add(control);
-        border.Child = grid;
+        if (_isCompactWidth && control is not ToggleSwitch && control is not Button)
+        {
+            var stack = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
+            control.HorizontalAlignment = HorizontalAlignment.Left;
+            stack.Children.Add(left);
+            stack.Children.Add(control);
+            border.Child = stack;
+        }
+        else
+        {
+            var grid = new Grid { ColumnSpacing = 20, HorizontalAlignment = HorizontalAlignment.Stretch };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            control.VerticalAlignment = VerticalAlignment.Center;
+            if (control.HorizontalAlignment == HorizontalAlignment.Stretch)
+            {
+                control.HorizontalAlignment = HorizontalAlignment.Right;
+            }
+
+            Grid.SetColumn(left, 0);
+            Grid.SetColumn(control, 1);
+            grid.Children.Add(left);
+            grid.Children.Add(control);
+            border.Child = grid;
+        }
+
         SectionContentHost.Children.Add(border);
     }
 
@@ -359,6 +517,7 @@ public sealed partial class SettingsWindow : Window
         {
             Padding = new Thickness(14, 10, 14, 10),
             CornerRadius = new CornerRadius(10),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = (Brush)Application.Current.Resources["WindowCardBrush"],
             BorderBrush = (Brush)Application.Current.Resources["WindowBorderBrush"],
             BorderThickness = new Thickness(1),
@@ -369,15 +528,25 @@ public sealed partial class SettingsWindow : Window
     private void AddAccentSwatches(AppearanceSettings app)
     {
         string[] hexes = ["#7aa2f7", "#38bdf8", "#34d399", "#a78bfa", "#f59e0b", "#fb7185", "#e4e4e7"];
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         foreach (var hex in hexes)
         {
             NOVAIsland.App.Services.ThemeManager.TryParseHexColor(hex, out var col);
+            var selected = string.Equals(app.AccentColor, hex, StringComparison.OrdinalIgnoreCase);
             var btn = new Button
             {
-                Width = 24, Height = 24, CornerRadius = new CornerRadius(12), Padding = new Thickness(0),
-                Background = new SolidColorBrush(col), BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Colors.White)
+                Width = 24,
+                Height = 24,
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(0),
+                Background = new SolidColorBrush(col),
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                BorderBrush = new SolidColorBrush(selected ? Colors.White : Color.FromArgb(110, 255, 255, 255))
             };
             var captured = hex;
             btn.Click += async (_, _) => { app.AccentColor = captured; await _settingsVm.SaveAsync(); RenderActiveSection(); };
@@ -390,12 +559,14 @@ public sealed partial class SettingsWindow : Window
     {
         var pill = new Border
         {
-            Width = app.IslandWidth, Height = app.IslandHeight,
+            Width = app.IslandWidth,
+            Height = app.IslandHeight,
             CornerRadius = new CornerRadius(app.CornerRadius),
             Background = new SolidColorBrush(Colors.Black),
             BorderBrush = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
             BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(14, 0, 14, 0),
             Child = new Grid
             {
@@ -409,7 +580,9 @@ public sealed partial class SettingsWindow : Window
 
         SectionContentHost.Children.Add(new Border
         {
-            Height = 96, CornerRadius = new CornerRadius(12),
+            Height = 96,
+            CornerRadius = new CornerRadius(12),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = (Brush)Application.Current.Resources["WindowCardBrush"],
             BorderBrush = (Brush)Application.Current.Resources["WindowBorderBrush"],
             BorderThickness = new Thickness(1),
@@ -421,7 +594,9 @@ public sealed partial class SettingsWindow : Window
     {
         var canvas = new Border
         {
-            Height = 120, CornerRadius = new CornerRadius(12),
+            Height = 120,
+            CornerRadius = new CornerRadius(12),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = new SolidColorBrush(Color.FromArgb(255, 10, 12, 18)),
             BorderBrush = (Brush)Application.Current.Resources["WindowBorderBrush"],
             BorderThickness = new Thickness(1),
@@ -429,16 +604,20 @@ public sealed partial class SettingsWindow : Window
             {
                 Text = $"Preview Anchor: {pos.ScreenPosition} (X: {pos.CustomX:0}% · Y: {pos.CustomY:0}px) — Click to position",
                 Foreground = new SolidColorBrush(Color.FromArgb(255, 161, 161, 170)),
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontSize = 12
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+                Margin = new Thickness(12, 0, 12, 0)
             }
         };
 
-        canvas.PointerPressed += async (s, e) =>
+        canvas.PointerPressed += async (_, e) =>
         {
             var pt = e.GetCurrentPoint(canvas).Position;
             pos.ScreenPosition = ScreenPosition.Custom;
             pos.CustomX = Math.Clamp(Math.Round(pt.X / Math.Max(1, canvas.ActualWidth) * 100), 12, 88);
-            pos.CustomY = Math.Clamp(Math.Round(pt.Y / Math.Max(1, canvas.ActualHeight) * 140), 8, 140);
+            pos.CustomY = Math.Clamp(Math.Round(pt.Y / Math.Max(1, canvas.ActualHeight) * 140), 0, 140);
             await _settingsVm.SaveAsync();
             RenderActiveSection();
         };
@@ -447,7 +626,11 @@ public sealed partial class SettingsWindow : Window
 
     private void AddMonitorSelector(PositionSettings pos)
     {
-        var combo = new ComboBox { Width = 260 };
+        var combo = new ComboBox
+        {
+            Width = StandardControlWidth,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         combo.Items.Add("Primary");
         combo.Items.Add("Follow active cursor monitor");
         foreach (var m in _positioner.GetMonitors()) combo.Items.Add(m.Id);
@@ -461,7 +644,20 @@ public sealed partial class SettingsWindow : Window
 
     private void AddExcludedAppsManager(ClipboardSettings clip)
     {
-        var input = new TextBox { PlaceholderText = "Add executable (e.g. KeePass.exe)", Width = 220 };
+        var row = new Grid
+        {
+            Width = 260,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            ColumnSpacing = 8
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var input = new TextBox
+        {
+            PlaceholderText = "Add app (e.g. KeePass.exe)",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         var addBtn = new Button { Content = "Exclude" };
         addBtn.Click += async (_, _) =>
         {
@@ -473,7 +669,9 @@ public sealed partial class SettingsWindow : Window
                 RenderActiveSection();
             }
         };
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+
+        Grid.SetColumn(input, 0);
+        Grid.SetColumn(addBtn, 1);
         row.Children.Add(input);
         row.Children.Add(addBtn);
         AddSettingRow("Excluded applications", string.Join(", ", clip.ExcludedApps), row);

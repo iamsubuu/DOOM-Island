@@ -45,9 +45,9 @@
 
         <ScrollViewer
             x:Name="LyricsScrollViewer"
-            Height="176"
+            Height="184"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="LyricsLinesPanel" Spacing="10" Padding="8,24,8,24" />
+            <StackPanel x:Name="LyricsLinesPanel" Spacing="6" Padding="4,10,4,10" />
         </ScrollViewer>
 
         <StackPanel x:Name="SearchPanel" Visibility="Collapsed" Spacing="8">

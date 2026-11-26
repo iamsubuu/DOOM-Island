@@ -131,7 +131,7 @@ public partial class App : Application
             {
                 lastLyricsTrackKey = key;
                 await islandVm.Lyrics.LoadForCurrentTrackAsync(!settingsVm.Settings.Privacy.LocalOnlyMode);
-                if (session is not null && islandVm.Mode == IslandMode.Compact)
+                if (session is not null && islandVm.Mode == IslandMode.Compact && !settingsVm.Settings.General.StealthTopBar)
                 {
                     _islandWindow?.DispatcherQueue.TryEnqueue(() => islandVm.SetMode(IslandMode.Music));
                 }
@@ -185,7 +185,7 @@ public partial class App : Application
         {
             switch (action)
             {
-                case ShortcutAction.ToggleIsland: islandVm.ToggleExpand(islandVm.Music.HasActiveMedia); break;
+                case ShortcutAction.ToggleIsland: islandVm.ToggleExpand(islandVm.Music.HasActiveMedia, settingsVm.Settings.General.StealthTopBar); break;
                 case ShortcutAction.OpenMusic: islandVm.SetMode(IslandMode.Expanded); break;
                 case ShortcutAction.OpenLyrics: islandVm.SetMode(IslandMode.Lyrics); break;
                 case ShortcutAction.OpenClipboard: islandVm.SetMode(IslandMode.Clipboard); break;

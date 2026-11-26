@@ -6,20 +6,20 @@
     <Color x:Key="NovaAccentColor">#7AA2F7</Color>
     <SolidColorBrush x:Key="NovaAccentBrush" Color="{StaticResource NovaAccentColor}" />
 
-    <!-- Pure-Black Dynamic Island Hardware Scope (always dark, mirrors .island-dark-scope) -->
-    <SolidColorBrush x:Key="IslandPureBlackBrush" Color="#FF000000" />
-    <SolidColorBrush x:Key="IslandObsidianBrush" Color="#FA0A0B0E" />
-    <SolidColorBrush x:Key="IslandGraphiteBrush" Color="#FA16171B" />
-    <SolidColorBrush x:Key="IslandSurfaceBrush" Color="#FA000000" />
+    <!-- Venom Glassmorphism Dynamic Island Scope -->
+    <SolidColorBrush x:Key="IslandPureBlackBrush" Color="#EB040509" />
+    <SolidColorBrush x:Key="IslandObsidianBrush" Color="#E00B0D14" />
+    <SolidColorBrush x:Key="IslandGraphiteBrush" Color="#DC141720" />
+    <SolidColorBrush x:Key="IslandSurfaceBrush" Color="#E606080D" />
 
-    <SolidColorBrush x:Key="IslandBorderSubtleBrush" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="IslandBorderStrongBrush" Color="#24FFFFFF" />
-    <SolidColorBrush x:Key="IslandBorderContrastBrush" Color="#47FFFFFF" />
+    <SolidColorBrush x:Key="IslandBorderSubtleBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="IslandBorderStrongBrush" Color="#38FFFFFF" />
+    <SolidColorBrush x:Key="IslandBorderContrastBrush" Color="#5CFFFFFF" />
 
-    <SolidColorBrush x:Key="IslandControlBgBrush" Color="#0DFFFFFF" />
-    <SolidColorBrush x:Key="IslandControlHoverBrush" Color="#1EFFFFFF" />
-    <SolidColorBrush x:Key="IslandControlActiveBrush" Color="#24FFFFFF" />
-    <SolidColorBrush x:Key="IslandDividerBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="IslandControlBgBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="IslandControlHoverBrush" Color="#24FFFFFF" />
+    <SolidColorBrush x:Key="IslandControlActiveBrush" Color="#2CFFFFFF" />
+    <SolidColorBrush x:Key="IslandDividerBrush" Color="#1CFFFFFF" />
 
     <SolidColorBrush x:Key="IslandTextPrimaryBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="IslandTextSecondaryBrush" Color="#FFA1A1AA" />
@@ -31,14 +31,14 @@
     <SolidColorBrush x:Key="NovaDangerBrush" Color="#FFFB7185" />
     <SolidColorBrush x:Key="NovaLinkBrush" Color="#FF7DD3FC" />
 
-    <!-- Theme-Aware Window Brushes (updated by ThemeManager for Dark / Light) -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F5101116" />
-    <SolidColorBrush x:Key="WindowSidebarBrush" Color="#08FFFFFF" />
-    <SolidColorBrush x:Key="WindowCardBrush" Color="#07FFFFFF" />
-    <SolidColorBrush x:Key="WindowCardHoverBrush" Color="#0DFFFFFF" />
-    <SolidColorBrush x:Key="WindowBorderBrush" Color="#12FFFFFF" />
-    <SolidColorBrush x:Key="WindowDividerBrush" Color="#10FFFFFF" />
-    <SolidColorBrush x:Key="WindowInputBgBrush" Color="#FF171922" />
+    <!-- Theme-Aware Glassmorphism Window Brushes (layered over DesktopAcrylicBackdrop) -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#AD0A0D14" />
+    <SolidColorBrush x:Key="WindowSidebarBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="WindowCardBrush" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="WindowCardHoverBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#2CFFFFFF" />
+    <SolidColorBrush x:Key="WindowDividerBrush" Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="WindowInputBgBrush" Color="#24161924" />
     <SolidColorBrush x:Key="WindowTextPrimaryBrush" Color="#FFF4F4F5" />
     <SolidColorBrush x:Key="WindowTextSecondaryBrush" Color="#FFA1A1AA" />
     <SolidColorBrush x:Key="WindowTextMutedBrush" Color="#FF71717A" />

@@ -51,14 +51,14 @@ public sealed class ThemeManager
             }
         }
 
-        var alpha = (byte)Math.Clamp((int)Math.Round(appearance.Opacity * 2.55), 204, 255);
+        var alpha = (byte)Math.Clamp((int)Math.Round(appearance.Opacity * 2.45), 215, 245);
         var surfaceColor = appearance.Theme switch
         {
-            ThemePreset.PureBlack => Color.FromArgb(alpha, 0, 0, 0),
-            ThemePreset.Obsidian => Color.FromArgb(alpha, 10, 11, 14),
-            ThemePreset.Graphite => Color.FromArgb(alpha, 22, 23, 27),
+            ThemePreset.PureBlack => Color.FromArgb(236, 4, 6, 10),
+            ThemePreset.Obsidian => Color.FromArgb(alpha, 11, 13, 20),
+            ThemePreset.Graphite => Color.FromArgb(alpha, 20, 23, 32),
             ThemePreset.Contrast => Color.FromArgb(255, 0, 0, 0),
-            _ => Color.FromArgb(alpha, 0, 0, 0)
+            _ => Color.FromArgb(236, 4, 6, 10)
         };
 
         if (resources["IslandSurfaceBrush"] is SolidColorBrush surfaceBrush)
@@ -85,16 +85,16 @@ public sealed class ThemeManager
     private static void ApplyWindowThemeBrushes(ElementTheme theme, ResourceDictionary resources)
     {
         var isDark = theme != ElementTheme.Light;
-        SetBrush(resources, "WindowBackgroundBrush", isDark ? Color.FromArgb(245, 16, 17, 22) : Color.FromArgb(245, 250, 250, 252));
-        SetBrush(resources, "WindowSidebarBrush", isDark ? Color.FromArgb(10, 255, 255, 255) : Color.FromArgb(160, 244, 244, 245));
-        SetBrush(resources, "WindowCardBrush", isDark ? Color.FromArgb(8, 255, 255, 255) : Color.FromArgb(255, 255, 255, 255));
-        SetBrush(resources, "WindowCardHoverBrush", isDark ? Color.FromArgb(14, 255, 255, 255) : Color.FromArgb(255, 244, 244, 246));
-        SetBrush(resources, "WindowBorderBrush", isDark ? Color.FromArgb(18, 255, 255, 255) : Color.FromArgb(220, 228, 228, 231));
-        SetBrush(resources, "WindowDividerBrush", isDark ? Color.FromArgb(16, 255, 255, 255) : Color.FromArgb(200, 228, 228, 231));
-        SetBrush(resources, "WindowInputBgBrush", isDark ? Color.FromArgb(255, 23, 25, 34) : Color.FromArgb(255, 255, 255, 255));
-        SetBrush(resources, "WindowTextPrimaryBrush", isDark ? Color.FromArgb(255, 244, 244, 245) : Color.FromArgb(255, 24, 24, 27));
-        SetBrush(resources, "WindowTextSecondaryBrush", isDark ? Color.FromArgb(255, 161, 161, 170) : Color.FromArgb(255, 82, 82, 91));
-        SetBrush(resources, "WindowTextMutedBrush", isDark ? Color.FromArgb(255, 113, 113, 122) : Color.FromArgb(255, 113, 113, 122));
+        SetBrush(resources, "WindowBackgroundBrush", isDark ? Color.FromArgb(172, 10, 13, 20) : Color.FromArgb(196, 246, 248, 252));
+        SetBrush(resources, "WindowSidebarBrush", isDark ? Color.FromArgb(20, 255, 255, 255) : Color.FromArgb(110, 255, 255, 255));
+        SetBrush(resources, "WindowCardBrush", isDark ? Color.FromArgb(20, 255, 255, 255) : Color.FromArgb(175, 255, 255, 255));
+        SetBrush(resources, "WindowCardHoverBrush", isDark ? Color.FromArgb(34, 255, 255, 255) : Color.FromArgb(215, 255, 255, 255));
+        SetBrush(resources, "WindowBorderBrush", isDark ? Color.FromArgb(44, 255, 255, 255) : Color.FromArgb(90, 255, 255, 255));
+        SetBrush(resources, "WindowDividerBrush", isDark ? Color.FromArgb(26, 255, 255, 255) : Color.FromArgb(32, 0, 0, 0));
+        SetBrush(resources, "WindowInputBgBrush", isDark ? Color.FromArgb(160, 20, 24, 34) : Color.FromArgb(215, 255, 255, 255));
+        SetBrush(resources, "WindowTextPrimaryBrush", isDark ? Color.FromArgb(255, 244, 244, 248) : Color.FromArgb(255, 20, 22, 28));
+        SetBrush(resources, "WindowTextSecondaryBrush", isDark ? Color.FromArgb(255, 180, 184, 196) : Color.FromArgb(255, 72, 76, 88));
+        SetBrush(resources, "WindowTextMutedBrush", isDark ? Color.FromArgb(255, 128, 132, 145) : Color.FromArgb(255, 108, 112, 124));
     }
 
     private static void SetBrush(ResourceDictionary resources, string key, Color color)

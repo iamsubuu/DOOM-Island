@@ -38,7 +38,10 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
         return results;
     }
 
-    public void ApplyIslandPosition(PositionSettings settings, int widthDip, int heightDip)
+    public void ApplyIslandPosition(PositionSettings settings, int widthDip, int heightDip) =>
+        ApplyIslandPosition(settings, widthDip, heightDip, flushTopEdge: false);
+
+    public void ApplyIslandPosition(PositionSettings settings, int widthDip, int heightDip, bool flushTopEdge)
     {
         if (_islandHwnd == IntPtr.Zero)
         {
@@ -49,7 +52,8 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
         var widthPx = (int)Math.Round(widthDip * scale);
         var heightPx = (int)Math.Round(heightDip * scale);
         var padX = (int)Math.Round(24 * scale);
-        var topOffset = (int)Math.Round(Math.Clamp(settings.CustomY, 8, 180) * scale);
+        var topMargin = flushTopEdge ? 0 : (int)Math.Round(14 * scale);
+        var topOffset = (int)Math.Round(Math.Clamp(settings.CustomY, 0, 180) * scale);
 
         int x;
         int y;
@@ -58,34 +62,35 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
         {
             case ScreenPosition.TopLeft:
                 x = bounds.Left + padX;
-                y = bounds.Top + (int)Math.Round(14 * scale);
+                y = bounds.Top + topMargin;
                 break;
             case ScreenPosition.TopRight:
                 x = bounds.Right - widthPx - padX;
-                y = bounds.Top + (int)Math.Round(14 * scale);
+                y = bounds.Top + topMargin;
                 break;
             case ScreenPosition.Custom:
                 var pct = Math.Clamp(settings.CustomX, 12, 88) / 100.0;
                 x = (int)Math.Round(bounds.Left + bounds.Width * pct - widthPx / 2.0);
-                y = bounds.Top + topOffset;
+                y = bounds.Top + (flushTopEdge && settings.CustomY <= 14 ? 0 : topOffset);
                 break;
             default: // TopCenter
                 x = bounds.Left + (bounds.Width - widthPx) / 2;
-                y = bounds.Top + (int)Math.Round(14 * scale);
+                y = bounds.Top + topMargin;
                 break;
         }
 
         x = Math.Clamp(x, bounds.Left + 8, Math.Max(bounds.Left + 8, bounds.Right - widthPx - 8));
-        y = Math.Clamp(y, bounds.Top + 4, Math.Max(bounds.Top + 4, bounds.Bottom - heightPx - 8));
+        var minY = flushTopEdge ? bounds.Top : bounds.Top + 4;
+        y = Math.Clamp(y, minY, Math.Max(minY, bounds.Bottom - heightPx - 8));
 
         Win32Interop.SetWindowPos(
             _islandHwnd,
-            IntPtr.Zero,
+            Win32Interop.HWND_TOPMOST,
             x,
             y,
             widthPx,
             heightPx,
-            Win32Interop.SWP_NOZORDER | Win32Interop.SWP_NOACTIVATE);
+            Win32Interop.SWP_NOACTIVATE);
     }
 
     public (int X, int Y, double Scale) ComputeScreenPointToCustomPercent(int screenX, int screenY, PositionSettings settings)

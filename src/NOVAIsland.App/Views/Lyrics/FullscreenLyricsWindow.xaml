@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:NOVAIsland.App.Controls">
-    <Grid Background="#FF06070A">
+    <Grid Background="#C006080E">
         <!-- Ambient Artwork Backdrop -->
         <controls:SafeMediaImage
             x:Name="BackdropImage"
@@ -86,8 +86,8 @@
                 Visibility="Collapsed"
                 Width="380"
                 HorizontalAlignment="Right"
-                Background="#F20D0F14"
-                BorderBrush="#18FFFFFF"
+                Background="#D80D1018"
+                BorderBrush="#2CFFFFFF"
                 BorderThickness="1,0,0,0"
                 Padding="24">
                 <StackPanel Spacing="14">

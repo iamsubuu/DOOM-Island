@@ -25,6 +25,7 @@ public sealed partial class FullscreenLyricsWindow : Window
         _music = music;
         _settings = settings;
 
+        SystemBackdrop = new DesktopAcrylicBackdrop();
         Title = $"{_settings.ResolvedAppName} · Fullscreen Lyrics";
         HeaderBrandText.Text = $"{_settings.ResolvedShortName} Lyrics";
 

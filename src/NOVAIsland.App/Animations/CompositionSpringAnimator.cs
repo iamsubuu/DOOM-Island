@@ -8,11 +8,128 @@ using NOVAIsland.Core.Services;
 namespace NOVAIsland.App.Animations;
 
 /// <summary>
-/// Windows.UI / Microsoft.UI.Composition damped spring animator for Dynamic Island
-/// scale, bounce, fade, and subtle ambient idle breathing.
+/// Windows.UI / Microsoft.UI.Composition damped spring animator for Venom-style
+/// top-edge liquid expansion, retraction, hover scale, and ambient pulse.
 /// </summary>
 public sealed class CompositionSpringAnimator
 {
+    public void AnimateVenomOpen(
+        UIElement shell,
+        UIElement content,
+        double targetWidth,
+        AnimationSettings animSettings,
+        double speed)
+    {
+        var shellVisual = ElementCompositionPreview.GetElementVisual(shell);
+        var compositor = shellVisual.Compositor;
+        var cfg = SpringPhysicsConfigMapper.FromPreset(animSettings.Preset, speed, animSettings.ReduceMotion);
+
+        var centerX = (float)Math.Max(60.0, targetWidth / 2.0);
+        shellVisual.CenterPoint = new Vector3(centerX, 0f, 0f);
+        shellVisual.StopAnimation(nameof(Visual.Scale));
+        shellVisual.StopAnimation(nameof(Visual.Opacity));
+
+        if (cfg.Instant)
+        {
+            shellVisual.Scale = Vector3.One;
+            shellVisual.Opacity = 1f;
+            AnimateContentEntrance(content, animSettings, speed);
+            return;
+        }
+
+        shellVisual.Scale = new Vector3(0.36f, 0.08f, 1f);
+        shellVisual.Opacity = 0.25f;
+
+        var scaleSpring = compositor.CreateSpringVector3Animation();
+        scaleSpring.FinalValue = Vector3.One;
+        scaleSpring.DampingRatio = Math.Clamp(cfg.DampingRatio, 0.68f, 0.88f);
+        scaleSpring.Period = TimeSpan.FromMilliseconds(Math.Clamp(240 / Math.Max(0.5, speed), 140, 320));
+        shellVisual.StartAnimation(nameof(Visual.Scale), scaleSpring);
+
+        var fade = compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(0f, 0.25f);
+        fade.InsertKeyFrame(1f, 1f, compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.9f), new Vector2(0.3f, 1f)));
+        fade.Duration = TimeSpan.FromMilliseconds(Math.Max(110, 180 / Math.Max(0.5, speed)));
+        shellVisual.StartAnimation(nameof(Visual.Opacity), fade);
+
+        AnimateContentEntrance(content, animSettings, speed);
+    }
+
+    public async Task<bool> AnimateVenomRetractAsync(
+        UIElement shell,
+        double currentWidth,
+        AnimationSettings animSettings,
+        double speed,
+        CancellationToken cancellationToken)
+    {
+        var shellVisual = ElementCompositionPreview.GetElementVisual(shell);
+        var compositor = shellVisual.Compositor;
+        var cfg = SpringPhysicsConfigMapper.FromPreset(animSettings.Preset, speed, animSettings.ReduceMotion);
+
+        if (cfg.Instant)
+        {
+            shellVisual.Scale = Vector3.One;
+            shellVisual.Opacity = 1f;
+            return true;
+        }
+
+        var centerX = (float)Math.Max(60.0, currentWidth / 2.0);
+        shellVisual.CenterPoint = new Vector3(centerX, 0f, 0f);
+
+        var durationMs = Math.Clamp(175 / Math.Max(0.5, speed), 100, 240);
+        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.8f, 0.4f));
+
+        var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
+        scaleAnim.InsertKeyFrame(1f, new Vector3(0.34f, 0.06f, 1f), ease);
+        scaleAnim.Duration = TimeSpan.FromMilliseconds(durationMs);
+        shellVisual.StartAnimation(nameof(Visual.Scale), scaleAnim);
+
+        var fadeAnim = compositor.CreateScalarKeyFrameAnimation();
+        fadeAnim.InsertKeyFrame(1f, 0f, ease);
+        fadeAnim.Duration = TimeSpan.FromMilliseconds(durationMs);
+        shellVisual.StartAnimation(nameof(Visual.Opacity), fadeAnim);
+
+        try
+        {
+            await Task.Delay((int)Math.Ceiling(durationMs), cancellationToken);
+            shellVisual.StopAnimation(nameof(Visual.Scale));
+            shellVisual.StopAnimation(nameof(Visual.Opacity));
+            shellVisual.Scale = Vector3.One;
+            shellVisual.Opacity = 1f;
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    public void RestoreShellImmediate(UIElement shell)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(shell);
+        visual.StopAnimation(nameof(Visual.Scale));
+        visual.StopAnimation(nameof(Visual.Opacity));
+        visual.Scale = Vector3.One;
+        visual.Opacity = 1f;
+    }
+
+    public void AnimateStealthLineAppear(UIElement lineElement, AnimationSettings animSettings)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(lineElement);
+        visual.StopAnimation(nameof(Visual.Opacity));
+        if (animSettings.ReduceMotion)
+        {
+            visual.Opacity = 1f;
+            return;
+        }
+
+        visual.Opacity = 0f;
+        var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(1f, 1f);
+        fade.Duration = TimeSpan.FromMilliseconds(180);
+        visual.StartAnimation(nameof(Visual.Opacity), fade);
+    }
+
     public void AnimateHoverScale(UIElement element, bool isHovered, AnimationSettings animSettings, double speed)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -62,6 +179,7 @@ public sealed class CompositionSpringAnimator
 
     public void AnimateContentEntrance(UIElement element, AnimationSettings animSettings, double speed)
     {
+        ElementCompositionPreview.SetIsTranslationEnabled(element, true);
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
         var cfg = SpringPhysicsConfigMapper.FromPreset(animSettings.Preset, speed, animSettings.ReduceMotion);
@@ -69,23 +187,23 @@ public sealed class CompositionSpringAnimator
         if (cfg.Instant)
         {
             visual.Opacity = 1f;
-            visual.Offset = Vector3.Zero;
+            visual.Properties.InsertVector3("Translation", Vector3.Zero);
             return;
         }
 
         visual.Opacity = 0f;
-        visual.Offset = new Vector3(0f, -6f, 0f);
+        visual.Properties.InsertVector3("Translation", new Vector3(0f, -10f, 0f));
 
         var fade = compositor.CreateScalarKeyFrameAnimation();
         fade.InsertKeyFrame(1f, 1f);
-        fade.Duration = TimeSpan.FromMilliseconds(Math.Max(90, 170 / Math.Max(0.5, speed)));
+        fade.Duration = TimeSpan.FromMilliseconds(Math.Max(110, 190 / Math.Max(0.5, speed)));
         visual.StartAnimation(nameof(Visual.Opacity), fade);
 
         var slide = compositor.CreateSpringVector3Animation();
         slide.FinalValue = Vector3.Zero;
         slide.DampingRatio = cfg.DampingRatio;
         slide.Period = cfg.Period;
-        visual.StartAnimation(nameof(Visual.Offset), slide);
+        visual.StartAnimation("Translation", slide);
     }
 
     public void SetIdleBreathing(UIElement element, bool enabled, bool reduceMotion)

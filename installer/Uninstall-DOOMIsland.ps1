@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Get-Process -Name "NOVAIsland.App","NOVAIsland.BrowserHost" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "DOOMIsland","NOVAIsland.App","NOVAIsland.BrowserHost" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 $shortcutPath = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\DOOM Island.lnk"
 Remove-Item -Path $shortcutPath -Force -ErrorAction SilentlyContinue

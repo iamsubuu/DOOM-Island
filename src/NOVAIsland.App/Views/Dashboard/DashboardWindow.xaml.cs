@@ -24,6 +24,7 @@ public sealed partial class DashboardWindow : Window
         _island = island;
         _settings = settings;
 
+        SystemBackdrop = new DesktopAcrylicBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
@@ -32,7 +33,19 @@ public sealed partial class DashboardWindow : Window
         var appWindow = AppWindow.GetFromWindowId(windowId);
         appWindow.Resize(new SizeInt32(1100, 720));
 
-        _island.Music.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
+        _island.Music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+            {
+                DashProgress.Value = _island.Music.ProgressPercentage;
+                DashElapsed.Text = _island.Music.FormattedPosition;
+                DashDuration.Text = _island.Music.FormattedDuration;
+            }
+            else
+            {
+                Refresh();
+            }
+        });
         _island.Timer.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
         _island.System.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
         _island.Clipboard.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
