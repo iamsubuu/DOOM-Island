@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NOVAIsland.Core.Enums;
@@ -12,6 +13,7 @@ public sealed partial class MusicViewModel : ObservableObject
 {
     private readonly IBrowserMediaBridge _bridge;
     private readonly Lock _syncLock = new();
+    private long _lastClockTicks = Stopwatch.GetTimestamp();
 
     public ObservableCollection<BrowserMediaSession> BrowserTabs { get; } = [];
 
@@ -68,12 +70,24 @@ public sealed partial class MusicViewModel : ObservableObject
             ConnectedBrowserName = _bridge.ConnectedBrowserName;
             CurrentSession = _bridge.CurrentSession;
             LivePositionSeconds = _bridge.CurrentSession?.PositionSeconds ?? 0;
+            _lastClockTicks = Stopwatch.GetTimestamp();
 
             BrowserTabs.Clear();
             foreach (var session in _bridge.ActiveSessions)
             {
                 BrowserTabs.Add(session);
             }
+        }
+    }
+
+    public void AdvancePlaybackByClock()
+    {
+        var now = Stopwatch.GetTimestamp();
+        var elapsed = Stopwatch.GetElapsedTime(_lastClockTicks, now).TotalSeconds;
+        _lastClockTicks = now;
+        if (elapsed > 0 && elapsed < 5.0)
+        {
+            AdvancePlaybackPosition(elapsed);
         }
     }
 
@@ -106,6 +120,7 @@ public sealed partial class MusicViewModel : ObservableObject
     public Task SeekAsync(double positionSeconds)
     {
         LivePositionSeconds = Math.Max(0, positionSeconds);
+        _lastClockTicks = Stopwatch.GetTimestamp();
         return DispatchCommandAsync(BrowserMediaAction.Seek, positionSeconds);
     }
 
@@ -178,6 +193,7 @@ public sealed partial class LyricsViewModel : ObservableObject
             return;
         }
 
+        var requestedKey = $"{session.Artist}::{session.Title}";
         TrackTitle = session.Title;
         ArtistName = session.Artist;
         IsLoading = true;
@@ -191,7 +207,11 @@ public sealed partial class LyricsViewModel : ObservableObject
                 allowNetwork,
                 cancellationToken);
 
-            ApplyResult(result);
+            var current = _music.CurrentSession;
+            if (current is not null && $"{current.Artist}::{current.Title}" == requestedKey)
+            {
+                ApplyResult(result);
+            }
         }
         finally
         {

@@ -15,7 +15,7 @@ public sealed class AppConstantsTests
     {
         Assert.Equal("DOOM Island", AppConstants.DefaultAppName);
         Assert.Equal("DOOM", AppConstants.DefaultShortName);
-        Assert.Equal("2.3.0", AppConstants.AppVersion);
+        Assert.Equal("2.4.0", AppConstants.AppVersion);
         Assert.Equal("com.doomisland.host", AppConstants.NativeMessagingHostName);
 
         var settings = new AppSettings();
@@ -69,7 +69,7 @@ public sealed class AppConstantsTests
             await store.SaveAsync(legacy);
 
             var loaded = await store.LoadAsync();
-            Assert.Equal(230, loaded.SchemaVersion);
+            Assert.Equal(240, loaded.SchemaVersion);
             Assert.Equal(ScreenPosition.TopCenter, loaded.Position.ScreenPosition);
             Assert.Equal(0, loaded.Position.CustomY);
             Assert.True(loaded.General.StealthTopBar);

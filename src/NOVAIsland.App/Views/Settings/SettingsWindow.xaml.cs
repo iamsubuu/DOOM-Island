@@ -527,7 +527,7 @@ public sealed partial class SettingsWindow : Window
 
     private void AddAccentSwatches(AppearanceSettings app)
     {
-        string[] hexes = ["#7aa2f7", "#38bdf8", "#34d399", "#a78bfa", "#f59e0b", "#fb7185", "#e4e4e7"];
+        string[] hexes = ["#2ee58b", "#10b981", "#34d399", "#7aa2f7", "#38bdf8", "#a78bfa", "#f59e0b"];
         var panel = new StackPanel
         {
             Orientation = Orientation.Horizontal,

@@ -93,9 +93,9 @@ public sealed class TrayHostService : ITrayService, IDisposable
                 var inBg = (x - 7.5) * (x - 7.5) + (y - 7.5) * (y - 7.5) <= 56;
                 var inPill = x >= 4 && x <= 11 && y >= 6 && y <= 9;
                 pixels[y * size + x] = inPill
-                    ? unchecked((int)0xFF7AA2F7)
+                    ? unchecked((int)0xFF2EE58B)
                     : inBg
-                        ? unchecked((int)0xFF0A0B0E)
+                        ? unchecked((int)0xFF06110B)
                         : 0x00000000;
             }
         }

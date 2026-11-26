@@ -45,16 +45,48 @@
                 BorderThickness="1,0,1,1">
 
                 <Grid>
-                    <!-- Venom Frosted Glass Top-Sheen Specular Layer -->
+                    <!-- Dr. Von Doom Emerald Glassmorphism Ambient Glow & Top Specular Layer -->
+                    <Border
+                        x:Name="DoomAmbientGlow"
+                        IsHitTestVisible="False"
+                        CornerRadius="{Binding ElementName=PillShell, Path=CornerRadius}">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#2C2EE58B" Offset="0" />
+                                <GradientStop Color="#1210B981" Offset="0.38" />
+                                <GradientStop Color="#00000000" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+
                     <Border
                         x:Name="GlassSheenLayer"
                         IsHitTestVisible="False"
                         CornerRadius="{Binding ElementName=PillShell, Path=CornerRadius}">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#1AFFFFFF" Offset="0" />
-                                <GradientStop Color="#05FFFFFF" Offset="0.24" />
+                                <GradientStop Color="#1EFFFFFF" Offset="0" />
+                                <GradientStop Color="#06FFFFFF" Offset="0.22" />
                                 <GradientStop Color="#00FFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+
+                    <!-- Live Dr. Doom Mystic Energy Sweep along Bottom Glass Rim -->
+                    <Border
+                        x:Name="DoomEnergySweep"
+                        IsHitTestVisible="False"
+                        Width="160"
+                        Height="2"
+                        CornerRadius="1"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,1">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#002EE58B" Offset="0" />
+                                <GradientStop Color="#AA2EE58B" Offset="0.5" />
+                                <GradientStop Color="#002EE58B" Offset="1" />
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
@@ -73,13 +105,13 @@
                             HorizontalAlignment="Center"
                             VerticalAlignment="Top"
                             Margin="0"
-                            BorderBrush="#2A000000"
+                            BorderBrush="#3304120B"
                             BorderThickness="0,0,0,0.75">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#22FFFFFF" Offset="0" />
-                                    <GradientStop Color="#D8EEF2FF" Offset="0.5" />
-                                    <GradientStop Color="#22FFFFFF" Offset="1" />
+                                    <GradientStop Color="#222EE58B" Offset="0" />
+                                    <GradientStop Color="#EE2EE58B" Offset="0.5" />
+                                    <GradientStop Color="#222EE58B" Offset="1" />
                                 </LinearGradientBrush>
                             </Border.Background>
                         </Border>

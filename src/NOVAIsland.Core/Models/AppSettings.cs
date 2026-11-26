@@ -31,7 +31,7 @@ public sealed class AppearanceSettings
 {
     public ColorMode ColorMode { get; set; } = ColorMode.Dark;
     public ThemePreset Theme { get; set; } = ThemePreset.PureBlack;
-    public string AccentColor { get; set; } = "#7aa2f7";
+    public string AccentColor { get; set; } = "#2EE58B";
     public FontFamilyOption FontFamily { get; set; } = FontFamilyOption.PlusJakartaSans;
     public double FontSize { get; set; } = 13;
     public int FontWeight { get; set; } = 500;
@@ -138,7 +138,7 @@ public sealed class PrivacySettings
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 230;
+    public int SchemaVersion { get; set; } = 240;
     public GeneralSettings General { get; set; } = new();
     public PositionSettings Position { get; set; } = new();
     public AppearanceSettings Appearance { get; set; } = new();

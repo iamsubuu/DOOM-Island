@@ -51,14 +51,14 @@ public sealed class ThemeManager
             }
         }
 
-        var alpha = (byte)Math.Clamp((int)Math.Round(appearance.Opacity * 2.45), 215, 245);
+        var alpha = (byte)Math.Clamp((int)Math.Round(appearance.Opacity * 2.30), 198, 232);
         var surfaceColor = appearance.Theme switch
         {
-            ThemePreset.PureBlack => Color.FromArgb(236, 4, 6, 10),
-            ThemePreset.Obsidian => Color.FromArgb(alpha, 11, 13, 20),
-            ThemePreset.Graphite => Color.FromArgb(alpha, 20, 23, 32),
-            ThemePreset.Contrast => Color.FromArgb(255, 0, 0, 0),
-            _ => Color.FromArgb(236, 4, 6, 10)
+            ThemePreset.PureBlack => Color.FromArgb(218, 6, 17, 11),
+            ThemePreset.Obsidian => Color.FromArgb(alpha, 9, 22, 16),
+            ThemePreset.Graphite => Color.FromArgb(alpha, 16, 29, 23),
+            ThemePreset.Contrast => Color.FromArgb(245, 4, 12, 8),
+            _ => Color.FromArgb(218, 6, 17, 11)
         };
 
         if (resources["IslandSurfaceBrush"] is SolidColorBrush surfaceBrush)
@@ -85,16 +85,16 @@ public sealed class ThemeManager
     private static void ApplyWindowThemeBrushes(ElementTheme theme, ResourceDictionary resources)
     {
         var isDark = theme != ElementTheme.Light;
-        SetBrush(resources, "WindowBackgroundBrush", isDark ? Color.FromArgb(172, 10, 13, 20) : Color.FromArgb(196, 246, 248, 252));
-        SetBrush(resources, "WindowSidebarBrush", isDark ? Color.FromArgb(20, 255, 255, 255) : Color.FromArgb(110, 255, 255, 255));
-        SetBrush(resources, "WindowCardBrush", isDark ? Color.FromArgb(20, 255, 255, 255) : Color.FromArgb(175, 255, 255, 255));
-        SetBrush(resources, "WindowCardHoverBrush", isDark ? Color.FromArgb(34, 255, 255, 255) : Color.FromArgb(215, 255, 255, 255));
-        SetBrush(resources, "WindowBorderBrush", isDark ? Color.FromArgb(44, 255, 255, 255) : Color.FromArgb(90, 255, 255, 255));
-        SetBrush(resources, "WindowDividerBrush", isDark ? Color.FromArgb(26, 255, 255, 255) : Color.FromArgb(32, 0, 0, 0));
-        SetBrush(resources, "WindowInputBgBrush", isDark ? Color.FromArgb(160, 20, 24, 34) : Color.FromArgb(215, 255, 255, 255));
-        SetBrush(resources, "WindowTextPrimaryBrush", isDark ? Color.FromArgb(255, 244, 244, 248) : Color.FromArgb(255, 20, 22, 28));
-        SetBrush(resources, "WindowTextSecondaryBrush", isDark ? Color.FromArgb(255, 180, 184, 196) : Color.FromArgb(255, 72, 76, 88));
-        SetBrush(resources, "WindowTextMutedBrush", isDark ? Color.FromArgb(255, 128, 132, 145) : Color.FromArgb(255, 108, 112, 124));
+        SetBrush(resources, "WindowBackgroundBrush", isDark ? Color.FromArgb(168, 6, 14, 10) : Color.FromArgb(196, 244, 250, 246));
+        SetBrush(resources, "WindowSidebarBrush", isDark ? Color.FromArgb(24, 20, 40, 30) : Color.FromArgb(115, 255, 255, 255));
+        SetBrush(resources, "WindowCardBrush", isDark ? Color.FromArgb(26, 18, 36, 26) : Color.FromArgb(180, 255, 255, 255));
+        SetBrush(resources, "WindowCardHoverBrush", isDark ? Color.FromArgb(44, 46, 229, 139) : Color.FromArgb(215, 236, 253, 245));
+        SetBrush(resources, "WindowBorderBrush", isDark ? Color.FromArgb(52, 46, 229, 139) : Color.FromArgb(80, 16, 185, 129));
+        SetBrush(resources, "WindowDividerBrush", isDark ? Color.FromArgb(34, 46, 229, 139) : Color.FromArgb(32, 0, 0, 0));
+        SetBrush(resources, "WindowInputBgBrush", isDark ? Color.FromArgb(160, 13, 24, 18) : Color.FromArgb(220, 255, 255, 255));
+        SetBrush(resources, "WindowTextPrimaryBrush", isDark ? Color.FromArgb(255, 242, 248, 245) : Color.FromArgb(255, 16, 24, 20));
+        SetBrush(resources, "WindowTextSecondaryBrush", isDark ? Color.FromArgb(255, 174, 192, 182) : Color.FromArgb(255, 68, 86, 76));
+        SetBrush(resources, "WindowTextMutedBrush", isDark ? Color.FromArgb(255, 118, 138, 128) : Color.FromArgb(255, 102, 118, 110));
     }
 
     private static void SetBrush(ResourceDictionary resources, string key, Color color)
@@ -107,7 +107,7 @@ public sealed class ThemeManager
 
     public static bool TryParseHexColor(string? hex, out Color color)
     {
-        color = Color.FromArgb(255, 122, 162, 247);
+        color = Color.FromArgb(255, 46, 229, 139);
         if (string.IsNullOrWhiteSpace(hex))
         {
             return false;

@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using NOVAIsland.Core.ViewModels;
+using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
 using WinRT.Interop;
@@ -17,6 +18,9 @@ public sealed partial class FullscreenLyricsWindow : Window
     private readonly LyricsViewModel _lyrics;
     private readonly MusicViewModel _music;
     private readonly SettingsViewModel _settings;
+    private string? _lastArtworkUri;
+    private string _renderedLinesSignature = string.Empty;
+    private readonly List<TextBlock> _lineTextBlocks = [];
 
     public FullscreenLyricsWindow(LyricsViewModel lyrics, MusicViewModel music, SettingsViewModel settings)
     {
@@ -34,81 +38,69 @@ public sealed partial class FullscreenLyricsWindow : Window
         var appWindow = AppWindow.GetFromWindowId(windowId);
         appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
 
-        _lyrics.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshLyrics);
-        _music.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshTrack);
+        _lyrics.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.PropertyName == nameof(LyricsViewModel.ActiveLineIndex))
+            {
+                UpdateLineHighlightsInPlace();
+                ScrollActiveLineIntoCenter();
+            }
+            else
+            {
+                RefreshLyrics();
+            }
+        });
+        _music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+            {
+                RefreshTimelineOnly();
+            }
+            else
+            {
+                RefreshTrack();
+            }
+        });
 
         RefreshTrack();
         RefreshLyrics();
     }
 
-    private void RefreshTrack()
+    private void RefreshTimelineOnly()
     {
         var s = _music.CurrentSession;
-        CoverArt.SourceUri = s?.ArtworkUrl;
-        BackdropImage.SourceUri = s?.ArtworkUrl;
-        PlayIcon.Glyph = _music.IsPlaying ? "\uE769" : "\uE768";
-        BackdropImage.Opacity = Math.Clamp(_settings.Settings.Lyrics.FullscreenBackdropOpacity / 160.0, 0.12, 0.65);
-
-        TitleText.Text = s is null ? "No Active Media" : (string.IsNullOrWhiteSpace(s.Title) ? s.TabTitle : s.Title);
-        ArtistText.Text = s?.Artist ?? "Play music in Chrome or Edge";
-        AlbumText.Text = s?.Album ?? string.Empty;
-
         SeekSlider.Maximum = Math.Max(1, s?.DurationSeconds ?? 100);
         SeekSlider.Value = Math.Clamp(_music.LivePositionSeconds, 0, SeekSlider.Maximum);
         ElapsedText.Text = _music.FormattedPosition;
         DurationText.Text = _music.FormattedDuration;
     }
 
+    private void RefreshTrack()
+    {
+        var s = _music.CurrentSession;
+        var nextArt = s?.ArtworkUrl;
+        if (!string.Equals(_lastArtworkUri, nextArt, StringComparison.Ordinal))
+        {
+            _lastArtworkUri = nextArt;
+            CoverArt.SourceUri = nextArt;
+            BackdropImage.SourceUri = nextArt;
+        }
+        PlayIcon.Glyph = _music.IsPlaying ? "\uE769" : "\uE768";
+        BackdropImage.Opacity = Math.Clamp(_settings.Settings.Lyrics.FullscreenBackdropOpacity / 160.0, 0.12, 0.65);
+
+        TitleText.Text = s is null ? "No Active Media" : (string.IsNullOrWhiteSpace(s.Title) ? s.TabTitle : s.Title);
+        ArtistText.Text = s?.Artist ?? "Play music in Chrome, Edge, or Opera";
+        AlbumText.Text = s?.Album ?? string.Empty;
+
+        RefreshTimelineOnly();
+    }
+
     private void RefreshLyrics()
     {
         SourceLabel.Text = $"{_lyrics.Source} · {(_lyrics.IsSynced ? "Time-Synced LRC" : "Plain")}";
-        LyricsStreamPanel.Children.Clear();
-
-        if (_lyrics.Lines.Count == 0)
-        {
-            LyricsStreamPanel.Children.Add(new TextBlock
-            {
-                Text = _lyrics.IsInstrumental ? "Instrumental track." : "No lyrics loaded. Open Manual LRCLIB Search.",
-                FontSize = 22,
-                Foreground = new SolidColorBrush(Color.FromArgb(255, 161, 161, 170))
-            });
-            return;
-        }
-
-        UIElement? activeEl = null;
-        for (var i = 0; i < _lyrics.Lines.Count; i++)
-        {
-            var line = _lyrics.Lines[i];
-            var isActive = i == _lyrics.ActiveLineIndex;
-            var dist = Math.Abs(i - _lyrics.ActiveLineIndex);
-
-            var btn = new Button
-            {
-                Content = line.Text,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-                FontSize = isActive ? Math.Max(28, _settings.Settings.Lyrics.FontSize + 12) : Math.Max(20, _settings.Settings.Lyrics.FontSize + 4),
-                FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal,
-                Foreground = new SolidColorBrush(
-                    isActive ? Colors.White :
-                    dist == 1 ? Color.FromArgb(255, 161, 161, 170) :
-                    Color.FromArgb(255, 82, 82, 91))
-            };
-            var t = line.TimeSeconds;
-            btn.Click += async (_, _) =>
-            {
-                if (_lyrics.IsSynced) await _music.SeekAsync(t);
-            };
-            LyricsStreamPanel.Children.Add(btn);
-            if (isActive) activeEl = btn;
-        }
-
-        if (activeEl is FrameworkElement fe)
-        {
-            fe.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = _settings.Settings.Lyrics.SmoothScroll });
-        }
+        RebuildLinesIfChanged();
+        UpdateLineHighlightsInPlace();
+        ScrollActiveLineIntoCenter();
 
         DrawerResults.Children.Clear();
         foreach (var item in _lyrics.SearchResults)
@@ -134,6 +126,101 @@ public sealed partial class FullscreenLyricsWindow : Window
             row.Children.Add(stack);
             row.Children.Add(btn);
             DrawerResults.Children.Add(row);
+        }
+    }
+
+    private void RebuildLinesIfChanged()
+    {
+        var sig = _lyrics.Lines.Count == 0
+            ? $"__empty_{_lyrics.IsInstrumental}__"
+            : $"{_lyrics.TrackTitle}|{_lyrics.Source}|{_lyrics.Lines.Count}|{_lyrics.Lines[0].Text}";
+
+        if (string.Equals(_renderedLinesSignature, sig, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _renderedLinesSignature = sig;
+        LyricsStreamPanel.Children.Clear();
+        _lineTextBlocks.Clear();
+
+        if (_lyrics.Lines.Count == 0)
+        {
+            LyricsStreamPanel.Children.Add(new TextBlock
+            {
+                Text = _lyrics.IsInstrumental ? "Instrumental track." : "No lyrics loaded. Open Manual LRCLIB Search.",
+                FontSize = 22,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 161, 161, 170))
+            });
+            return;
+        }
+
+        for (var i = 0; i < _lyrics.Lines.Count; i++)
+        {
+            var line = _lyrics.Lines[i];
+            var tb = new TextBlock
+            {
+                Text = line.Text,
+                TextWrapping = TextWrapping.Wrap
+            };
+            _lineTextBlocks.Add(tb);
+
+            var btn = new Button
+            {
+                Content = tb,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0)
+            };
+            var t = line.TimeSeconds;
+            btn.Click += async (_, _) =>
+            {
+                if (_lyrics.IsSynced) await _music.SeekAsync(t);
+            };
+            LyricsStreamPanel.Children.Add(btn);
+        }
+    }
+
+    private void UpdateLineHighlightsInPlace()
+    {
+        if (_lineTextBlocks.Count == 0) return;
+
+        var activeSize = Math.Max(28, _settings.Settings.Lyrics.FontSize + 12);
+        var inactiveSize = Math.Max(20, _settings.Settings.Lyrics.FontSize + 4);
+        var activeBrush = new SolidColorBrush(Colors.White);
+        var nearBrush = new SolidColorBrush(Color.FromArgb(255, 196, 204, 212));
+        var farBrush = new SolidColorBrush(Color.FromArgb(255, 110, 118, 128));
+
+        for (var i = 0; i < _lineTextBlocks.Count; i++)
+        {
+            var tb = _lineTextBlocks[i];
+            var isActive = i == _lyrics.ActiveLineIndex;
+            var dist = Math.Abs(i - _lyrics.ActiveLineIndex);
+
+            tb.FontSize = isActive ? activeSize : inactiveSize;
+            tb.FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal;
+            tb.Foreground = isActive ? activeBrush : dist == 1 ? nearBrush : farBrush;
+        }
+    }
+
+    private void ScrollActiveLineIntoCenter()
+    {
+        if (_lyrics.ActiveLineIndex < 0 || _lyrics.ActiveLineIndex >= LyricsStreamPanel.Children.Count) return;
+        if (LyricsScrollViewer.ViewportHeight <= 0) return;
+
+        if (LyricsStreamPanel.Children[_lyrics.ActiveLineIndex] is FrameworkElement fe)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    var pt = fe.TransformToVisual(LyricsStreamPanel).TransformPoint(new Point(0, 0));
+                    var targetY = Math.Max(0, pt.Y - (LyricsScrollViewer.ViewportHeight / 2.0) + (fe.ActualHeight / 2.0));
+                    LyricsScrollViewer.ChangeView(null, targetY, null, disableAnimation: !(_settings.Settings.Lyrics.SmoothScroll));
+                }
+                catch { }
+            });
         }
     }
 

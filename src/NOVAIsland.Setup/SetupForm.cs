@@ -17,7 +17,7 @@ internal sealed class SetupForm : Form
 
     public SetupForm(string defaultInstallDir)
     {
-        Text = "DOOM Island Setup v2.3.0";
+        Text = "DOOM Island Setup v2.4.0";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;

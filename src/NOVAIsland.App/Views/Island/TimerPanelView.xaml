@@ -28,7 +28,7 @@
             </Grid.ColumnDefinitions>
 
             <Grid Width="92" Height="92">
-                <controls:ProgressRingControl x:Name="Ring" Progress="1.0" />
+                <controls:ProgressRingControl x:Name="Ring" RingSize="92" StrokeThickness="5" Progress="1.0" />
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <TextBlock
                         x:Name="TimeDisplayText"

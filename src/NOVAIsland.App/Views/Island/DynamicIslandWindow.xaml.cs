@@ -213,14 +213,20 @@ public sealed partial class DynamicIslandWindow : Window
 
         if (isStealthCompact)
         {
+            DoomAmbientGlow.Visibility = Visibility.Collapsed;
+            DoomEnergySweep.Visibility = Visibility.Collapsed;
             GlassSheenLayer.Visibility = Visibility.Collapsed;
+            _animator.StopDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep);
             PillShell.CornerRadius = new CornerRadius(0, 0, 10, 10);
             PillShell.BorderThickness = new Thickness(0);
             PillShell.Background = new SolidColorBrush(Color.FromArgb(2, 0, 0, 0));
         }
         else
         {
+            DoomAmbientGlow.Visibility = Visibility.Visible;
+            DoomEnergySweep.Visibility = Visibility.Visible;
             GlassSheenLayer.Visibility = Visibility.Visible;
+            _animator.StartDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep, targetWidth, s.Animation.ReduceMotion);
             PillShell.CornerRadius = s.General.StealthTopBar
                 ? new CornerRadius(0, 0, radius, radius)
                 : new CornerRadius(radius);

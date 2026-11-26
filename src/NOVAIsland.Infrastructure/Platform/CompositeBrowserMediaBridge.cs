@@ -175,6 +175,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
 
             await RefreshSmtcSessionsAsync();
             RaiseStateChanged();
+            _ = Task.Run(() => PollSmtcTimelinesAsync(_cts.Token), _cts.Token);
         }
         catch
         {
@@ -550,6 +551,54 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             }
         }
         return false;
+    }
+
+    private async Task PollSmtcTimelinesAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(1500));
+        while (await timer.WaitForNextTickAsync(ct))
+        {
+            var anyPlaying = _smtcSessions.Values.Any(s => s.Model.PlaybackState == BrowserPlaybackState.Playing);
+            if (!anyPlaying) continue;
+
+            var changed = false;
+            foreach (var tracked in _smtcSessions.Values.ToList())
+            {
+                if (tracked.Model.PlaybackState != BrowserPlaybackState.Playing) continue;
+                try
+                {
+                    var timeline = tracked.SmtcSession.GetTimelineProperties();
+                    var playback = tracked.SmtcSession.GetPlaybackInfo();
+                    var rate = playback.PlaybackRate is > 0 ? playback.PlaybackRate.Value : 1.0;
+                    var dur = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalSeconds);
+                    var pos = Math.Max(0, (timeline.Position - timeline.StartTime).TotalSeconds);
+                    if (timeline.LastUpdatedTime != default)
+                    {
+                        var elapsed = (DateTimeOffset.UtcNow - timeline.LastUpdatedTime).TotalSeconds;
+                        if (elapsed > 0 && elapsed < 3600)
+                        {
+                            pos += elapsed * rate;
+                        }
+                    }
+                    if (dur > 0) pos = Math.Clamp(pos, 0, dur);
+
+                    if (Math.Abs(pos - tracked.Model.PositionSeconds) > 0.35 || Math.Abs(dur - tracked.Model.DurationSeconds) > 0.5)
+                    {
+                        tracked.Model.PositionSeconds = pos;
+                        if (dur > 0) tracked.Model.DurationSeconds = dur;
+                        tracked.Model.PlaybackRate = rate;
+                        tracked.Model.LastUpdatedUtc = DateTimeOffset.UtcNow;
+                        changed = true;
+                    }
+                }
+                catch { }
+            }
+
+            if (changed)
+            {
+                RaiseStateChanged();
+            }
+        }
     }
 
     private void RaiseStateChanged() => StateChanged?.Invoke(this, EventArgs.Empty);

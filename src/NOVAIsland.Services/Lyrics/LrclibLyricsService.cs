@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using NOVAIsland.Core.Enums;
 using NOVAIsland.Core.Interfaces;
 using NOVAIsland.Core.Models;
@@ -35,7 +36,11 @@ public sealed class LrclibLyricsService : ILyricsService
             return null;
         }
 
-        var cached = await _cache.GetCachedAsync(title, artist, cancellationToken);
+        var cleanTitle = CleanMetadata(title);
+        var cleanArtist = CleanArtist(artist);
+
+        var cached = await _cache.GetCachedAsync(title, artist, cancellationToken)
+                  ?? await _cache.GetCachedAsync(cleanTitle, cleanArtist, cancellationToken);
         if (cached is not null)
         {
             return cached;
@@ -46,40 +51,47 @@ public sealed class LrclibLyricsService : ILyricsService
             return null;
         }
 
-        try
+        foreach (var (t, a) in new[] { (title, artist), (cleanTitle, cleanArtist) }.Distinct())
         {
-            var url = $"https://lrclib.net/api/get?track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist ?? string.Empty)}";
-            if (!string.IsNullOrWhiteSpace(album))
+            try
             {
-                url += $"&album_name={Uri.EscapeDataString(album)}";
-            }
-            if (durationSeconds > 1)
-            {
-                url += $"&duration={Math.Round(durationSeconds)}";
-            }
-
-            using var resp = await _http.GetAsync(url, cancellationToken);
-            if (resp.IsSuccessStatusCode)
-            {
-                var dto = await resp.Content.ReadFromJsonAsync<LrclibDto>(cancellationToken: cancellationToken);
-                var mapped = MapDto(dto);
-                if (mapped is not null)
+                var url = $"https://lrclib.net/api/get?track_name={Uri.EscapeDataString(t)}&artist_name={Uri.EscapeDataString(a ?? string.Empty)}";
+                if (!string.IsNullOrWhiteSpace(album))
                 {
-                    await _cache.SaveCachedAsync(mapped, cancellationToken);
-                    return mapped;
+                    url += $"&album_name={Uri.EscapeDataString(album)}";
+                }
+                if (durationSeconds > 1)
+                {
+                    url += $"&duration={Math.Round(durationSeconds)}";
+                }
+
+                using var resp = await _http.GetAsync(url, cancellationToken);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var dto = await resp.Content.ReadFromJsonAsync<LrclibDto>(cancellationToken: cancellationToken);
+                    var mapped = MapDto(dto);
+                    if (mapped is not null && mapped.Lines.Count > 0)
+                    {
+                        await _cache.SaveCachedAsync(mapped, cancellationToken);
+                        return mapped;
+                    }
                 }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            // Fall through to search fallback
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Fall through to cleaned/search fallback
+            }
         }
 
-        var results = await SearchLyricsAsync($"{title} {artist}".Trim(), allowNetwork: true, cancellationToken);
+        var results = await SearchLyricsAsync($"{cleanTitle} {cleanArtist}".Trim(), allowNetwork: true, cancellationToken);
+        if (results.Count == 0 && !string.Equals(cleanTitle, title, StringComparison.OrdinalIgnoreCase))
+        {
+            results = await SearchLyricsAsync(cleanTitle, allowNetwork: true, cancellationToken);
+        }
         var best = results.FirstOrDefault(r => r.IsSynced) ?? results.FirstOrDefault();
         if (best is not null)
         {
@@ -87,6 +99,23 @@ public sealed class LrclibLyricsService : ILyricsService
         }
 
         return best;
+    }
+
+    private static string CleanMetadata(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        var s = Regex.Replace(raw, @"\s*[\(\[](?:official|lyric|lyrics|audio|video|hd|4k|mv|visualizer|from\s+[^\)\]]+)[^\)\]]*[\)\]]", "", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\s*\|.*$", "");
+        s = Regex.Replace(s, @"\s+", " ").Trim();
+        return string.IsNullOrWhiteSpace(s) ? raw.Trim() : s;
+    }
+
+    private static string CleanArtist(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        var s = Regex.Replace(raw, @"\s*-\s*Topic$", "", RegexOptions.IgnoreCase);
+        var first = s.Split([',', '&'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+        return string.IsNullOrWhiteSpace(first) ? s.Trim() : first;
     }
 
     public async Task<IReadOnlyList<LyricsSearchResult>> SearchLyricsAsync(

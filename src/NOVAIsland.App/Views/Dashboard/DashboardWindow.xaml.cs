@@ -1,3 +1,5 @@
+using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,6 +17,7 @@ public sealed partial class DashboardWindow : Window
     private readonly IslandViewModel _island;
     private readonly SettingsViewModel _settings;
     private bool _updatingUi;
+    private string? _lastArtworkUri;
 
     public event EventHandler<SettingsSectionId>? OpenSettingsSectionRequested;
 
@@ -31,8 +34,12 @@ public sealed partial class DashboardWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new SizeInt32(1100, 720));
+        appWindow.Resize(new SizeInt32(1140, 760));
 
+        SizeChanged += OnWindowSizeChanged;
+        UpdateResponsiveLayout(Bounds.Width);
+
+        _island.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(HighlightActiveStateButton);
         _island.Music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
         {
             if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
@@ -56,6 +63,77 @@ public sealed partial class DashboardWindow : Window
         Refresh();
     }
 
+    private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs args) =>
+        UpdateResponsiveLayout(args.Size.Width);
+
+    private void UpdateResponsiveLayout(double width)
+    {
+        if (width <= 0) return;
+
+        var isNarrowHeader = width < 640;
+        Grid.SetColumn(HeroActionsPanel, isNarrowHeader ? 0 : 1);
+        Grid.SetRow(HeroActionsPanel, isNarrowHeader ? 1 : 0);
+        HeroActionsPanel.HorizontalAlignment = isNarrowHeader ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+
+        Grid.SetColumn(StateQuickActions, isNarrowHeader ? 0 : 1);
+        Grid.SetRow(StateQuickActions, isNarrowHeader ? 1 : 0);
+        StateQuickActions.HorizontalAlignment = isNarrowHeader ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+
+        var isCompactTransport = width < 560;
+        Grid.SetColumn(DashTransportPanel, isCompactTransport ? 0 : 2);
+        Grid.SetRow(DashTransportPanel, isCompactTransport ? 1 : 0);
+        Grid.SetColumnSpan(DashTransportPanel, isCompactTransport ? 3 : 1);
+        DashTransportPanel.HorizontalAlignment = isCompactTransport ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+
+        var stackOverview = width < 880;
+        OverviewCol0.Width = stackOverview ? new GridLength(1, GridUnitType.Star) : new GridLength(7, GridUnitType.Star);
+        OverviewCol1.Width = stackOverview ? new GridLength(0) : new GridLength(5, GridUnitType.Star);
+        Grid.SetColumn(LiveControlsCard, stackOverview ? 0 : 1);
+        Grid.SetRow(LiveControlsCard, stackOverview ? 1 : 0);
+
+        if (stackOverview)
+        {
+            CardsCol2.Width = new GridLength(0);
+            CardsCol3.Width = new GridLength(0);
+            Grid.SetColumn(CardClip, 0);
+            Grid.SetRow(CardClip, 1);
+            Grid.SetColumn(CardActivity, 1);
+            Grid.SetRow(CardActivity, 1);
+        }
+        else
+        {
+            CardsCol2.Width = new GridLength(1, GridUnitType.Star);
+            CardsCol3.Width = new GridLength(1, GridUnitType.Star);
+            Grid.SetColumn(CardClip, 2);
+            Grid.SetRow(CardClip, 0);
+            Grid.SetColumn(CardActivity, 3);
+            Grid.SetRow(CardActivity, 0);
+        }
+
+        FeedsCol1.Width = stackOverview ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetColumn(RecentActivityCard, stackOverview ? 0 : 1);
+        Grid.SetRow(RecentActivityCard, stackOverview ? 1 : 0);
+    }
+
+    private void HighlightActiveStateButton()
+    {
+        var activeBg = (Brush)Application.Current.Resources["IslandControlActiveBrush"];
+        var activeFg = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"];
+        var inactiveFg = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"];
+        var transparent = new SolidColorBrush(Colors.Transparent);
+
+        foreach (var child in StateButtonsPanel.Children)
+        {
+            if (child is Button btn && btn.Tag is string tag && Enum.TryParse<IslandMode>(tag, out var mode))
+            {
+                var active = mode == _island.Mode;
+                btn.Background = active ? activeBg : transparent;
+                btn.Foreground = active ? activeFg : inactiveFg;
+                btn.FontWeight = active ? FontWeights.SemiBold : FontWeights.Medium;
+            }
+        }
+    }
+
     private void Refresh()
     {
         _updatingUi = true;
@@ -77,7 +155,11 @@ public sealed partial class DashboardWindow : Window
             NowPlayingMeta.Text = m is null
                 ? (_island.Music.IsBrowserConnected ? $"{_island.Music.ConnectedBrowserName} · Ready" : "Browser Media · Disabled")
                 : $"{m.UrlHost} · {m.Browser} · {m.PlaybackState}";
-            DashArtwork.SourceUri = m?.ArtworkUrl;
+            if (!string.Equals(_lastArtworkUri, m?.ArtworkUrl, StringComparison.Ordinal))
+            {
+                _lastArtworkUri = m?.ArtworkUrl;
+                DashArtwork.SourceUri = _lastArtworkUri;
+            }
             DashPlayIcon.Glyph = _island.Music.IsPlaying ? "\uE769" : "\uE768";
             DashTitle.Text = m is null ? "No Active Browser Media" : (string.IsNullOrWhiteSpace(m.Title) ? m.TabTitle : m.Title);
             DashArtist.Text = m?.Artist ?? "Start playback in Chrome, Edge, or Opera";
@@ -115,6 +197,8 @@ public sealed partial class DashboardWindow : Window
                     Foreground = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"]
                 });
             }
+
+            HighlightActiveStateButton();
         }
         finally
         {

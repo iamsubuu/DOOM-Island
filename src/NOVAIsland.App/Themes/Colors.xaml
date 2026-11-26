@@ -2,24 +2,24 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Dynamic Accent (updated live by ThemeManager) -->
-    <Color x:Key="NovaAccentColor">#7AA2F7</Color>
+    <!-- Dynamic Accent (Dr. Von Doom Emerald default, updated live by ThemeManager) -->
+    <Color x:Key="NovaAccentColor">#2EE58B</Color>
     <SolidColorBrush x:Key="NovaAccentBrush" Color="{StaticResource NovaAccentColor}" />
 
-    <!-- Venom Glassmorphism Dynamic Island Scope -->
-    <SolidColorBrush x:Key="IslandPureBlackBrush" Color="#EB040509" />
-    <SolidColorBrush x:Key="IslandObsidianBrush" Color="#E00B0D14" />
-    <SolidColorBrush x:Key="IslandGraphiteBrush" Color="#DC141720" />
-    <SolidColorBrush x:Key="IslandSurfaceBrush" Color="#E606080D" />
+    <!-- Dr. Von Doom Emerald Glassmorphism Dynamic Island Scope -->
+    <SolidColorBrush x:Key="IslandPureBlackBrush" Color="#DC06110B" />
+    <SolidColorBrush x:Key="IslandObsidianBrush" Color="#D6091610" />
+    <SolidColorBrush x:Key="IslandGraphiteBrush" Color="#D2101D17" />
+    <SolidColorBrush x:Key="IslandSurfaceBrush" Color="#DA06110B" />
 
-    <SolidColorBrush x:Key="IslandBorderSubtleBrush" Color="#26FFFFFF" />
-    <SolidColorBrush x:Key="IslandBorderStrongBrush" Color="#38FFFFFF" />
-    <SolidColorBrush x:Key="IslandBorderContrastBrush" Color="#5CFFFFFF" />
+    <SolidColorBrush x:Key="IslandBorderSubtleBrush" Color="#2C2EE58B" />
+    <SolidColorBrush x:Key="IslandBorderStrongBrush" Color="#482EE58B" />
+    <SolidColorBrush x:Key="IslandBorderContrastBrush" Color="#882EE58B" />
 
-    <SolidColorBrush x:Key="IslandControlBgBrush" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="IslandControlHoverBrush" Color="#24FFFFFF" />
-    <SolidColorBrush x:Key="IslandControlActiveBrush" Color="#2CFFFFFF" />
-    <SolidColorBrush x:Key="IslandDividerBrush" Color="#1CFFFFFF" />
+    <SolidColorBrush x:Key="IslandControlBgBrush" Color="#18182E22" />
+    <SolidColorBrush x:Key="IslandControlHoverBrush" Color="#2C2EE58B" />
+    <SolidColorBrush x:Key="IslandControlActiveBrush" Color="#382EE58B" />
+    <SolidColorBrush x:Key="IslandDividerBrush" Color="#242EE58B" />
 
     <SolidColorBrush x:Key="IslandTextPrimaryBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="IslandTextSecondaryBrush" Color="#FFA1A1AA" />
@@ -31,14 +31,14 @@
     <SolidColorBrush x:Key="NovaDangerBrush" Color="#FFFB7185" />
     <SolidColorBrush x:Key="NovaLinkBrush" Color="#FF7DD3FC" />
 
-    <!-- Theme-Aware Glassmorphism Window Brushes (layered over DesktopAcrylicBackdrop) -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#AD0A0D14" />
-    <SolidColorBrush x:Key="WindowSidebarBrush" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="WindowCardBrush" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="WindowCardHoverBrush" Color="#22FFFFFF" />
-    <SolidColorBrush x:Key="WindowBorderBrush" Color="#2CFFFFFF" />
-    <SolidColorBrush x:Key="WindowDividerBrush" Color="#1AFFFFFF" />
-    <SolidColorBrush x:Key="WindowInputBgBrush" Color="#24161924" />
+    <!-- Theme-Aware Emerald Glassmorphism Window Brushes (layered over DesktopAcrylicBackdrop) -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#A8060E0A" />
+    <SolidColorBrush x:Key="WindowSidebarBrush" Color="#1614281E" />
+    <SolidColorBrush x:Key="WindowCardBrush" Color="#1812241A" />
+    <SolidColorBrush x:Key="WindowCardHoverBrush" Color="#2A2EE58B" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#342EE58B" />
+    <SolidColorBrush x:Key="WindowDividerBrush" Color="#222EE58B" />
+    <SolidColorBrush x:Key="WindowInputBgBrush" Color="#A00D1812" />
     <SolidColorBrush x:Key="WindowTextPrimaryBrush" Color="#FFF4F4F5" />
     <SolidColorBrush x:Key="WindowTextSecondaryBrush" Color="#FFA1A1AA" />
     <SolidColorBrush x:Key="WindowTextMutedBrush" Color="#FF71717A" />

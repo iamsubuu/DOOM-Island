@@ -126,14 +126,21 @@ public sealed class SqliteSettingsStore : ISettingsStore
         }
 
         var migrated = false;
-        if (loaded.SchemaVersion < 230)
+        if (loaded.SchemaVersion < 240)
         {
-            loaded.SchemaVersion = 230;
-            loaded.Position.ScreenPosition = Core.Enums.ScreenPosition.TopCenter;
-            loaded.Position.CustomY = 0;
-            loaded.General.StealthTopBar = true;
-            loaded.General.HoverToOpen = true;
-            loaded.General.CollapseBehavior = Core.Enums.CollapseBehavior.MouseLeave;
+            if (loaded.SchemaVersion < 230)
+            {
+                loaded.Position.ScreenPosition = Core.Enums.ScreenPosition.TopCenter;
+                loaded.Position.CustomY = 0;
+                loaded.General.StealthTopBar = true;
+                loaded.General.HoverToOpen = true;
+                loaded.General.CollapseBehavior = Core.Enums.CollapseBehavior.MouseLeave;
+            }
+            if (string.Equals(loaded.Appearance.AccentColor, "#7aa2f7", StringComparison.OrdinalIgnoreCase))
+            {
+                loaded.Appearance.AccentColor = "#2EE58B";
+            }
+            loaded.SchemaVersion = 240;
             migrated = true;
         }
 

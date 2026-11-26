@@ -230,7 +230,7 @@ public partial class App : Application
                 dq.TryEnqueue(() =>
                 {
                     islandVm.Timer.TickStopwatchTenth();
-                    islandVm.Music.AdvancePlaybackPosition(0.1);
+                    islandVm.Music.AdvancePlaybackByClock();
                     islandVm.Lyrics.UpdateActiveLine(islandVm.Music.LivePositionSeconds);
                     if (tickCount % 10 == 0)
                     {

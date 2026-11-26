@@ -226,4 +226,58 @@ public sealed class CompositionSpringAnimator
         anim.IterationBehavior = AnimationIterationBehavior.Forever;
         visual.StartAnimation(nameof(Visual.Opacity), anim);
     }
+
+    public void StartDoomEnergyAnimations(UIElement glowLayer, UIElement sweepBeam, double shellWidth, bool reduceMotion)
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(sweepBeam, true);
+        var glowVisual = ElementCompositionPreview.GetElementVisual(glowLayer);
+        var sweepVisual = ElementCompositionPreview.GetElementVisual(sweepBeam);
+
+        SafeStopAnimation(glowVisual, nameof(Visual.Opacity));
+        SafeStopAnimation(sweepVisual, "Translation");
+
+        if (reduceMotion)
+        {
+            glowVisual.Opacity = 0.55f;
+            sweepVisual.Properties.InsertVector3("Translation", Vector3.Zero);
+            return;
+        }
+
+        var c = glowVisual.Compositor;
+        var pulse = c.CreateScalarKeyFrameAnimation();
+        pulse.InsertKeyFrame(0f, 0.40f);
+        pulse.InsertKeyFrame(0.5f, 0.95f);
+        pulse.InsertKeyFrame(1f, 0.40f);
+        pulse.Duration = TimeSpan.FromSeconds(3.2);
+        pulse.IterationBehavior = AnimationIterationBehavior.Forever;
+        glowVisual.StartAnimation(nameof(Visual.Opacity), pulse);
+
+        var span = (float)Math.Max(420.0, shellWidth + 180.0);
+        var sweep = c.CreateVector3KeyFrameAnimation();
+        sweep.InsertKeyFrame(0f, new Vector3(-160f, 0f, 0f));
+        sweep.InsertKeyFrame(0.65f, new Vector3(span, 0f, 0f));
+        sweep.InsertKeyFrame(1f, new Vector3(span, 0f, 0f));
+        sweep.Duration = TimeSpan.FromSeconds(4.2);
+        sweep.IterationBehavior = AnimationIterationBehavior.Forever;
+        sweepVisual.StartAnimation("Translation", sweep);
+    }
+
+    public void StopDoomEnergyAnimations(UIElement glowLayer, UIElement sweepBeam)
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(sweepBeam, true);
+        SafeStopAnimation(ElementCompositionPreview.GetElementVisual(glowLayer), nameof(Visual.Opacity));
+        SafeStopAnimation(ElementCompositionPreview.GetElementVisual(sweepBeam), "Translation");
+    }
+
+    private static void SafeStopAnimation(Visual visual, string propertyName)
+    {
+        try
+        {
+            visual.StopAnimation(propertyName);
+        }
+        catch
+        {
+            // Ignore if property has no active animation yet
+        }
+    }
 }

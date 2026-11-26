@@ -74,7 +74,7 @@
                 </StackPanel>
 
                 <!-- Right Synchronized Lyrics Stream -->
-                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="LyricsScrollViewer" Grid.Column="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="LyricsStreamPanel" Spacing="18" Padding="0,80,16,80" />
                 </ScrollViewer>
             </Grid>
