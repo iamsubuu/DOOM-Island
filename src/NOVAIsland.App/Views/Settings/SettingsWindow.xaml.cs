@@ -37,7 +37,7 @@ public sealed partial class SettingsWindow : Window
         new(SettingsSectionId.Appearance, "Appearance", "Dark/Light/System theme, accent color, font, dimensions & live preview", ["theme", "accent", "font", "width", "height", "radius", "opacity", "black"]),
         new(SettingsSectionId.Animation, "Animation", "Composition spring presets, speed, hover scale, bounce & breathing", ["animation", "spring", "fluid", "snappy", "silk", "motion"]),
         new(SettingsSectionId.Music, "Music", "Album artwork, WASAPI equalizer, progress hairline & title scrolling", ["music", "equalizer", "artwork", "progress"]),
-        new(SettingsSectionId.BrowserIntegration, "Browser Integration", "Automatic Chrome/Edge/Opera media + optional MV3 Extension", ["browser", "chrome", "edge", "opera", "extension", "native"]),
+        new(SettingsSectionId.BrowserIntegration, "Browser Integration", "Automatic Chrome/Edge/Opera media + optional MV3 Extension", ["browser", "chrome", "edge", "opera", "extension", "native", "download", "github"]),
         new(SettingsSectionId.Lyrics, "Lyrics", "Synchronized LRCLIB lookup, scrolling & fullscreen backdrop", ["lyrics", "lrclib", "sync", "scroll", "fullscreen"]),
         new(SettingsSectionId.Clipboard, "Clipboard", "History retention, sensitive exclusions & excluded apps", ["clipboard", "history", "sensitive", "excluded"]),
         new(SettingsSectionId.Notifications, "Notifications", "Windows system notification routing, previews & Focus Assist sync", ["notifications", "alerts", "dnd", "focus", "system"]),
@@ -326,6 +326,12 @@ public sealed partial class SettingsWindow : Window
                 AddInfoBanner(_islandVm.Music.IsBrowserConnected
                     ? $"Connected: {_islandVm.Music.ConnectedBrowserName} ({_islandVm.Music.BrowserTabs.Count} active media session(s)). Chrome, Edge & Opera auto-connect via Windows Media Session; optional MV3 extension adds per-tab switching."
                     : "Browser media integration is paused. Enable the toggle below to connect to Chrome, Edge, and Opera.");
+                SectionContentHost.Children.Add(CreateAboutLinkRow(
+                    title: "Browser Extension (Optional)",
+                    subtitle: "Media already syncs automatically. Install DOOMIsland-BrowserExtension-MV3.zip to add multi-tab switching, exact seeking, and Focus Tab.",
+                    glyph: "\uE896",
+                    linkText: "Get on GitHub Releases",
+                    uri: new Uri("https://github.com/iamsubuu/DOOM-Island/releases")));
                 AddToggleRow("Enable browser media integration", "Auto-detect Chrome, Edge, and Opera media + optional MV3 extension.", s.BrowserIntegration.Enabled, v => s.BrowserIntegration.Enabled = v);
                 AddToggleRow("Auto-focus audible tab", "Prioritize actively playing browser tabs.", s.BrowserIntegration.AutoFocusAudibleTab, v => s.BrowserIntegration.AutoFocusAudibleTab = v);
                 AddToggleRow("Sync artwork & metadata", null, s.BrowserIntegration.SyncArtworkAndMetadata, v => s.BrowserIntegration.SyncArtworkAndMetadata = v);
