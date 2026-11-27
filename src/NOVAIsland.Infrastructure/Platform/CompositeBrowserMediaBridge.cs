@@ -41,6 +41,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
     private GlobalSystemMediaTransportControlsSessionManager? _smtcManager;
     private CancellationTokenSource? _cts;
     private string? _lastPaletteSourceUri;
+    private string _lastSmtcSnapshotSignature = string.Empty;
     private bool _started;
     private bool _smtcReady;
 
@@ -115,20 +116,25 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             }
 
             var extSessions = _extensionBridge.ActiveSessions;
-            var extBrowsers = extSessions
-                .Select(s => NormalizeBrowserKey(s.Browser))
-                .Where(k => !string.IsNullOrEmpty(k))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
             var combined = new List<BrowserMediaSession>(extSessions.Count + _smtcSessions.Count);
             combined.AddRange(extSessions);
 
             foreach (var smtc in _smtcSessions.Values)
             {
-                if (extBrowsers.Contains(NormalizeBrowserKey(smtc.Identity.DisplayName)))
+                var smtcKey = NormalizeBrowserKey(smtc.Identity.DisplayName);
+                var matchingExt = extSessions
+                    .Where(s => string.Equals(NormalizeBrowserKey(s.Browser), smtcKey, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                // Suppress SMTC duplicate only when MV3 extension already has a valid session and isn't superseded by an actively playing SMTC stream.
+                var extHasValid = matchingExt.Any(s =>
+                    s.PlaybackState == BrowserPlaybackState.Playing ||
+                    (!string.IsNullOrWhiteSpace(s.Title) && smtc.Model.PlaybackState != BrowserPlaybackState.Playing));
+                if (extHasValid)
                 {
                     continue;
                 }
+
                 if (smtc.Model.PlaybackState == BrowserPlaybackState.None && string.IsNullOrWhiteSpace(smtc.Model.Title))
                 {
                     continue;
@@ -244,6 +250,34 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
 
     public void NotifySettingsChanged() => RaiseStateChanged();
 
+    public async Task ForceRefreshAsync()
+    {
+        if (_cts?.IsCancellationRequested ?? true)
+        {
+            return;
+        }
+
+        if (_smtcManager is null)
+        {
+            try
+            {
+                _smtcManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+                _smtcManager.SessionsChanged += OnSmtcSessionsChanged;
+                _smtcManager.CurrentSessionChanged += OnSmtcCurrentSessionChanged;
+                _smtcReady = true;
+            }
+            catch
+            {
+                _smtcReady = false;
+            }
+        }
+
+        _lastSmtcSnapshotSignature = string.Empty;
+        await RefreshSmtcSessionsAsync();
+        RaiseStateChanged();
+        _ = EnhanceCurrentSessionAndPaletteAsync();
+    }
+
     private void OnSmtcSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args)
     {
         _ = Task.Run(async () =>
@@ -262,42 +296,74 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
         });
     }
 
-    private async Task RefreshSmtcSessionsAsync()
+    private async Task<bool> RefreshSmtcSessionsAsync()
     {
         if (_smtcManager is null || (_cts?.IsCancellationRequested ?? true))
         {
-            return;
+            return false;
         }
 
         await _refreshLock.WaitAsync();
         try
         {
-            var sessions = _smtcManager.GetSessions();
-            var currentAumid = _smtcManager.GetCurrentSession()?.SourceAppUserModelId;
-            var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions;
+            string? currentAumid;
+            try
+            {
+                sessions = _smtcManager.GetSessions();
+                currentAumid = _smtcManager.GetCurrentSession()?.SourceAppUserModelId;
+            }
+            catch
+            {
+                return false;
+            }
+
+            var bestByAumid = new Dictionary<string, SmtcTrackedSession>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var session in sessions)
             {
-                var aumid = session.SourceAppUserModelId;
-                var identity = TryResolveMediaIdentity(aumid);
-                if (identity is null)
+                try
                 {
-                    continue;
+                    var aumid = session.SourceAppUserModelId;
+                    var identity = TryResolveMediaIdentity(aumid);
+                    if (identity is null)
+                    {
+                        continue;
+                    }
+
+                    _smtcSessions.TryGetValue(aumid, out var previousTracked);
+                    var model = await BuildSessionModelAsync(
+                        session,
+                        identity,
+                        string.Equals(aumid, currentAumid, StringComparison.OrdinalIgnoreCase),
+                        previousTracked?.Model);
+
+                    var candidate = new SmtcTrackedSession
+                    {
+                        SmtcSession = session,
+                        Identity = identity,
+                        Model = model
+                    };
+
+                    if (!bestByAumid.TryGetValue(aumid, out var existingBest) ||
+                        ShouldPreferSmtcCandidate(candidate.Model, existingBest.Model))
+                    {
+                        bestByAumid[aumid] = candidate;
+                    }
                 }
-
-                seenKeys.Add(aumid);
-                SubscribeSessionEvents(session);
-
-                var model = await BuildSessionModelAsync(session, identity, string.Equals(aumid, currentAumid, StringComparison.OrdinalIgnoreCase));
-                _smtcSessions[aumid] = new SmtcTrackedSession
+                catch
                 {
-                    SmtcSession = session,
-                    Identity = identity,
-                    Model = model
-                };
+                    // Isolate transient COM failures per SMTC session so healthy tabs/players still sync
+                }
             }
 
-            foreach (var staleKey in _smtcSessions.Keys.Where(k => !seenKeys.Contains(k)).ToList())
+            foreach (var (aumid, best) in bestByAumid)
+            {
+                _smtcSessions[aumid] = best;
+                SubscribeSessionEvents(best.SmtcSession);
+            }
+
+            foreach (var staleKey in _smtcSessions.Keys.Where(k => !bestByAumid.ContainsKey(k)).ToList())
             {
                 _smtcSessions.TryRemove(staleKey, out _);
                 if (_subscribedSessions.TryRemove(staleKey, out var oldSession))
@@ -305,10 +371,11 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
                     UnsubscribeSessionEvents(oldSession);
                 }
             }
-        }
-        catch
-        {
-            // Ignore transient WinRT COM exceptions when browsers close abruptly
+
+            var sig = BuildSmtcSnapshotSignature();
+            var changed = !string.Equals(sig, _lastSmtcSnapshotSignature, StringComparison.Ordinal);
+            _lastSmtcSnapshotSignature = sig;
+            return changed;
         }
         finally
         {
@@ -316,9 +383,49 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
         }
     }
 
+    internal static int ScoreSmtcSession(BrowserMediaSession session)
+    {
+        var score = session.PlaybackState switch
+        {
+            BrowserPlaybackState.Playing => 100,
+            BrowserPlaybackState.Paused => 40,
+            _ => 0
+        };
+        if (!string.IsNullOrWhiteSpace(session.Title)) score += 20;
+        if (session.IsActiveBrowserTab) score += 10;
+        if (session.DurationSeconds > 0) score += 5;
+        return score;
+    }
+
+    internal static bool ShouldPreferSmtcCandidate(BrowserMediaSession candidate, BrowserMediaSession existing) =>
+        ScoreSmtcSession(candidate) > ScoreSmtcSession(existing);
+
+    private string BuildSmtcSnapshotSignature()
+    {
+        if (_smtcSessions.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            "|",
+            _smtcSessions
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"{kv.Key}:{kv.Value.Model.PlaybackState}:{kv.Value.Model.Title}:{kv.Value.Model.Artist}:{(int)Math.Round(kv.Value.Model.DurationSeconds)}"));
+    }
+
     private async Task RefreshSingleSessionAsync(GlobalSystemMediaTransportControlsSession session)
     {
-        var aumid = session.SourceAppUserModelId;
+        string aumid;
+        try
+        {
+            aumid = session.SourceAppUserModelId;
+        }
+        catch
+        {
+            return;
+        }
+
         var identity = TryResolveMediaIdentity(aumid);
         if (identity is null)
         {
@@ -329,13 +436,24 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
         try
         {
             var isCurrent = string.Equals(aumid, _smtcManager?.GetCurrentSession()?.SourceAppUserModelId, StringComparison.OrdinalIgnoreCase);
-            var model = await BuildSessionModelAsync(session, identity, isCurrent);
+            _smtcSessions.TryGetValue(aumid, out var previous);
+            var model = await BuildSessionModelAsync(session, identity, isCurrent, previous?.Model);
+
+            // Don't let a secondary/empty SMTC tab overwrite an active titled/playing entry for the same AUMID
+            if (previous is not null &&
+                !ReferenceEquals(previous.SmtcSession, session) &&
+                !ShouldPreferSmtcCandidate(model, previous.Model))
+            {
+                return;
+            }
+
             _smtcSessions[aumid] = new SmtcTrackedSession
             {
                 SmtcSession = session,
                 Identity = identity,
                 Model = model
             };
+            _lastSmtcSnapshotSignature = BuildSmtcSnapshotSignature();
         }
         catch
         {
@@ -350,17 +468,27 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
     private async Task<BrowserMediaSession> BuildSessionModelAsync(
         GlobalSystemMediaTransportControlsSession session,
         MediaIdentity identity,
-        bool isCurrent)
+        bool isCurrent,
+        BrowserMediaSession? previousModel = null)
     {
         var playback = session.GetPlaybackInfo();
         var timeline = session.GetTimelineProperties();
-        var props = await session.TryGetMediaPropertiesAsync();
+        GlobalSystemMediaTransportControlsSessionMediaProperties? props = null;
+        try
+        {
+            props = await session.TryGetMediaPropertiesAsync();
+        }
+        catch
+        {
+            // Keep previously fetched metadata if SMTC throws transiently during track swap
+        }
 
         var state = playback.PlaybackStatus switch
         {
             GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing => BrowserPlaybackState.Playing,
             GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => BrowserPlaybackState.Paused,
             GlobalSystemMediaTransportControlsSessionPlaybackStatus.Opened => BrowserPlaybackState.Paused,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus.Changing => BrowserPlaybackState.Paused,
             _ => BrowserPlaybackState.None
         };
 
@@ -380,20 +508,39 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             posSeconds = Math.Clamp(posSeconds, 0, durationSeconds);
         }
 
-        var title = props.Title?.Trim() ?? string.Empty;
-        var artist = props.Artist?.Trim() ?? string.Empty;
+        var title = props?.Title?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(title) && props is null && previousModel is not null)
+        {
+            title = previousModel.Title;
+        }
+
+        var artist = props?.Artist?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(artist))
+        {
+            artist = props?.Subtitle?.Trim() ?? string.Empty;
+        }
+        if (string.IsNullOrWhiteSpace(artist) && props is null && previousModel is not null)
+        {
+            artist = previousModel.Artist;
+        }
         if (string.IsNullOrWhiteSpace(artist))
         {
             artist = identity.DisplayName;
         }
 
+        var album = props?.AlbumTitle?.Trim() ?? (props is null ? previousModel?.Album ?? string.Empty : string.Empty);
+
         var settings = _settingsProvider();
         string? artworkUri = null;
         uint thumbW = 0;
         uint thumbH = 0;
-        if (settings.SyncArtworkAndMetadata && props.Thumbnail is not null)
+        if (settings.SyncArtworkAndMetadata && props?.Thumbnail is not null)
         {
             (artworkUri, thumbW, thumbH) = await _artworkService.CacheSmtcThumbnailAsync(props.Thumbnail);
+        }
+        else if (props is null && previousModel is not null)
+        {
+            artworkUri = previousModel.ArtworkUrl;
         }
 
         var trackCacheKey = $"{identity.DisplayName}::{artist}::{title}";
@@ -412,7 +559,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             TabTitle = title,
             Title = title,
             Artist = artist,
-            Album = props.AlbumTitle?.Trim() ?? string.Empty,
+            Album = album,
             ArtworkUrl = artworkUri,
             DurationSeconds = durationSeconds,
             PositionSeconds = posSeconds,
@@ -427,7 +574,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             LastUpdatedUtc = DateTimeOffset.UtcNow
         };
 
-        if (settings.SyncArtworkAndMetadata)
+        if (settings.SyncArtworkAndMetadata && !string.IsNullOrWhiteSpace(title))
         {
             var aumid = session.SourceAppUserModelId;
             _ = EnhanceSmtcArtworkAndPaletteAsync(aumid, trackCacheKey, title, artist, artworkUri, thumbW, thumbH);
@@ -516,11 +663,16 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
     private void SubscribeSessionEvents(GlobalSystemMediaTransportControlsSession session)
     {
         var key = session.SourceAppUserModelId;
-        if (!_subscribedSessions.TryAdd(key, session))
+        if (_subscribedSessions.TryGetValue(key, out var existing))
         {
-            return;
+            if (Equals(existing, session))
+            {
+                return;
+            }
+            try { UnsubscribeSessionEvents(existing); } catch { }
         }
 
+        _subscribedSessions[key] = session;
         session.MediaPropertiesChanged += OnSmtcSessionUpdated;
         session.PlaybackInfoChanged += OnSmtcSessionUpdated;
         session.TimelinePropertiesChanged += OnSmtcSessionUpdated;
@@ -724,8 +876,29 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
     private async Task PollSmtcTimelinesAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(1500));
+        var ticks = 0;
         while (await timer.WaitForNextTickAsync(ct))
         {
+            ticks++;
+
+            // Reconcile SMTC sessions periodically or whenever no titled session is tracked yet so missed WinRT events recover automatically.
+            var needsResync = ticks % 2 == 0 || _smtcSessions.IsEmpty || _smtcSessions.Values.Any(s => string.IsNullOrWhiteSpace(s.Model.Title));
+            if (needsResync && _smtcManager is not null)
+            {
+                try
+                {
+                    var rawCount = _smtcManager.GetSessions().Count;
+                    if (rawCount != _smtcSessions.Count || rawCount > 0)
+                    {
+                        if (await RefreshSmtcSessionsAsync())
+                        {
+                            RaiseStateChanged();
+                        }
+                    }
+                }
+                catch { }
+            }
+
             var anyPlaying = _smtcSessions.Values.Any(s => s.Model.PlaybackState == BrowserPlaybackState.Playing);
             if (!anyPlaying) continue;
 

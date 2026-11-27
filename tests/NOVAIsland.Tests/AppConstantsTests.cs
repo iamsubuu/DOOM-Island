@@ -18,7 +18,7 @@ public sealed class AppConstantsTests
         Assert.Equal("ArcSubash", AppConstants.PublisherName);
         Assert.Equal("ArcSubash.DOOMIsland-DynamicIsland", AppConstants.StorePackageName);
         Assert.Equal("CN=AAFF5C79-617E-404B-893B-24B04B60D21C", AppConstants.StorePackagePublisher);
-        Assert.Equal("2.4.9", AppConstants.AppVersion);
+        Assert.Equal("2.5.1", AppConstants.AppVersion);
         Assert.Equal("com.doomisland.host", AppConstants.NativeMessagingHostName);
 
         var settings = new AppSettings();
@@ -325,5 +325,31 @@ public sealed class AppConstantsTests
         var line = Assert.Single(lyrics.Lines);
         Assert.Equal("Aachaley line 1", line.Text);
         Assert.False(lyrics.IsLoading);
+    }
+
+    [Fact]
+    public void CompositeBrowserMediaBridge_PrefersPlayingTitledSessionOverIdleDuplicate()
+    {
+        var playingSession = new NOVAIsland.Core.Models.BrowserMediaSession
+        {
+            TabId = -1001,
+            Browser = "Google Chrome",
+            Title = "Bombay Ponnu",
+            Artist = "Vijay Antony",
+            DurationSeconds = 234,
+            PlaybackState = BrowserPlaybackState.Playing,
+            IsActiveBrowserTab = true
+        };
+        var emptyZombie = new NOVAIsland.Core.Models.BrowserMediaSession
+        {
+            TabId = -1001,
+            Browser = "Google Chrome",
+            Title = string.Empty,
+            PlaybackState = BrowserPlaybackState.None,
+            IsActiveBrowserTab = false
+        };
+
+        Assert.True(NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.ShouldPreferSmtcCandidate(playingSession, emptyZombie));
+        Assert.False(NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.ShouldPreferSmtcCandidate(emptyZombie, playingSession));
     }
 }

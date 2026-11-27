@@ -62,6 +62,7 @@ public sealed class WinRtNotificationListenerService : INotificationListenerServ
                     IsSupported = true;
                     HasPermission = true;
                     StatusMessage = "Connected to Windows System Action Center (Live API)";
+                    _listener.NotificationChanged -= OnNotificationChanged;
                     _listener.NotificationChanged += OnNotificationChanged;
                     return;
                 }

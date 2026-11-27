@@ -6,7 +6,7 @@
     <RootNamespace>NOVAIsland.Setup</RootNamespace>
     <Authors>ArcSubash</Authors>
     <Company>ArcSubash</Company>
-    <Version Condition="'$(Version)' == ''">2.4.9</Version>
+    <Version Condition="'$(Version)' == ''">2.5.1</Version>
     <AssemblyName>DOOMIsland-Setup-x64-v$(Version)</AssemblyName>
     <ApplicationIcon>..\NOVAIsland.App\Assets\DOOMIsland.ico</ApplicationIcon>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>

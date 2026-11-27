@@ -273,6 +273,7 @@ public partial class App : Application
         _islandWindow = new DynamicIslandWindow(islandVm, settingsVm, positioner, themeManager);
         _islandWindow.OpenDashboardRequested += (_, _) => OpenDashboard();
         _islandWindow.OpenSettingsRequested += (_, _) => OpenSettings(SettingsSectionId.General);
+        _islandWindow.RefreshRestartRequested += (_, _) => SafeUiEnqueueAsync(RefreshOrRestartIslandAsync);
         HideOnCloseInsteadOfExit(_islandWindow, hideWindow: false);
         _islandWindow.Activate();
 
@@ -619,7 +620,44 @@ public partial class App : Application
         _fullscreenWindow.Activate();
     }
 
-    private void Shutdown()
+    private async Task RefreshOrRestartIslandAsync()
+    {
+        var ct = _appCts?.Token ?? CancellationToken.None;
+        try
+        {
+            var sp = _host.Services;
+            var settingsVm = sp.GetRequiredService<SettingsViewModel>();
+            var islandVm = sp.GetRequiredService<IslandViewModel>();
+            var themeManager = sp.GetRequiredService<ThemeManager>();
+            var compositeBridge = sp.GetRequiredService<CompositeBrowserMediaBridge>();
+
+            themeManager.ApplyAppearance(settingsVm.Settings.Appearance);
+            await compositeBridge.ForceRefreshAsync();
+            islandVm.Music.SyncFromBridge();
+            await islandVm.Lyrics.LoadForSessionAsync(
+                islandVm.Music.CurrentSession,
+                !settingsVm.Settings.Privacy.LocalOnlyMode,
+                ct);
+
+            await islandVm.Notifications.InitializeAsync(ct);
+            await islandVm.System.RefreshAsync(ct);
+            await islandVm.Clipboard.LoadAsync(ct);
+
+            sp.GetRequiredService<IHotkeyService>().RegisterBindings(settingsVm.Settings.Shortcuts);
+            sp.GetRequiredService<TrayHostService>().UpdateTooltip(settingsVm.ResolvedAppName);
+            sp.GetRequiredService<MultiMonitorPositioner>().ResetBoundsCache();
+            _islandWindow?.ApplySettingsAndReposition();
+            _islandWindow?.EnsureStealthVisibleAndTopmost();
+            _islandWindow?.UpdateClock();
+        }
+        catch (Exception ex)
+        {
+            TryWriteCrashLog(ex);
+            Shutdown(relaunch: true);
+        }
+    }
+
+    private void Shutdown(bool relaunch = false)
     {
         _isShuttingDown = true;
         NovaUiDispatcher.Reset();
@@ -642,6 +680,28 @@ public partial class App : Application
             _singleInstanceMutex.ReleaseMutex();
         }
         _singleInstanceMutex.Dispose();
+
+        if (relaunch)
+        {
+            try
+            {
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrWhiteSpace(exePath) && File.Exists(exePath))
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        Arguments = "--minimized",
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                TryWriteCrashLog(ex);
+            }
+        }
+
         Exit();
     }
 }

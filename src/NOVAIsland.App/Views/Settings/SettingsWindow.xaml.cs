@@ -24,6 +24,13 @@ public sealed partial class SettingsWindow : Window
         public override string ToString() => Label;
     }
 
+    private sealed class EnumOption<T>(T value, string label) where T : struct, Enum
+    {
+        public T Value { get; } = value;
+        public string Label { get; } = label;
+        public override string ToString() => Label;
+    }
+
     private static readonly SectionMeta[] Sections =
     [
         new(SettingsSectionId.General, "General", "Stealth top bar, hover open, startup, and collapse behavior", ["stealth", "hover", "startup", "top", "collapse", "double"]),
@@ -55,6 +62,7 @@ public sealed partial class SettingsWindow : Window
     private readonly IClipboardRepository _clipboardRepo;
     private readonly Services.ThemeManager _themeManager;
     private readonly DispatcherTimer _saveDebounceTimer = new();
+    private readonly List<Action> _comboResyncActions = [];
     private Border? _appearancePreviewHost;
     private bool _syncingCompactNav;
     private bool _isCompactWidth;
@@ -123,6 +131,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         SizeChanged += OnWindowSizeChanged;
+        Activated += (_, _) => ResyncVisibleComboBoxesDeferred();
         UpdateResponsiveLayout(Bounds.Width);
         RebuildSidebar();
         RenderActiveSection();
@@ -133,6 +142,36 @@ public sealed partial class SettingsWindow : Window
         _settingsVm.ActiveSection = section;
         RebuildSidebar();
         RenderActiveSection();
+        ResyncVisibleComboBoxesDeferred();
+    }
+
+    private void ResyncVisibleComboBoxesDeferred()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var resync in _comboResyncActions)
+            {
+                resync();
+            }
+
+            if (CompactSectionCombo.Items.Count > 0)
+            {
+                _syncingCompactNav = true;
+                try
+                {
+                    var idx = Array.FindIndex(Sections, s => s.Id == _settingsVm.ActiveSection);
+                    if (idx >= 0)
+                    {
+                        CompactSectionCombo.SelectedIndex = -1;
+                        CompactSectionCombo.SelectedIndex = idx;
+                    }
+                }
+                finally
+                {
+                    _syncingCompactNav = false;
+                }
+            }
+        });
     }
 
     private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs args)
@@ -225,6 +264,7 @@ public sealed partial class SettingsWindow : Window
         SectionSubtitleText.Text = meta.Subtitle;
 
         SectionContentHost.Children.Clear();
+        _comboResyncActions.Clear();
         _appearancePreviewHost = null;
         var s = _settingsVm.Settings;
 
@@ -438,16 +478,53 @@ public sealed partial class SettingsWindow : Window
 
     private void AddEnumRow<T>(string title, T[] values, T current, Action<T> onChanged) where T : struct, Enum
     {
+        var options = values.Select(v => new EnumOption<T>(v, v.ToString())).ToList();
+        var activeValue = current;
+        var isSyncing = false;
+
         var combo = new ComboBox
         {
             Width = StandardControlWidth,
-            HorizontalAlignment = HorizontalAlignment.Right
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"],
+            ItemsSource = options,
+            DisplayMemberPath = nameof(EnumOption<T>.Label)
         };
-        foreach (var v in values) combo.Items.Add(v);
-        combo.SelectedItem = current;
+
+        void SyncSelection(bool forceRefresh)
+        {
+            var idx = options.FindIndex(o => EqualityComparer<T>.Default.Equals(o.Value, activeValue));
+            if (idx < 0 && options.Count > 0) idx = 0;
+
+            isSyncing = true;
+            try
+            {
+                if (forceRefresh)
+                {
+                    combo.SelectedIndex = -1;
+                }
+                combo.SelectedIndex = idx;
+            }
+            finally
+            {
+                isSyncing = false;
+            }
+        }
+
+        SyncSelection(forceRefresh: false);
+
+        combo.Loaded += (_, _) => combo.DispatcherQueue.TryEnqueue(() => SyncSelection(forceRefresh: true));
+        _comboResyncActions.Add(() => SyncSelection(forceRefresh: true));
+
         combo.SelectionChanged += async (_, _) =>
         {
-            if (combo.SelectedItem is T selected) { onChanged(selected); await _settingsVm.SaveAsync(); }
+            if (isSyncing) return;
+            if (combo.SelectedItem is EnumOption<T> selected)
+            {
+                activeValue = selected.Value;
+                onChanged(selected.Value);
+                await _settingsVm.SaveAsync();
+            }
         };
         AddSettingRow(title, null, combo);
     }

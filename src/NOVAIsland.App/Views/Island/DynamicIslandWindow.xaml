@@ -240,6 +240,9 @@
                             </ScrollViewer>
 
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Click="OnRefreshRestartClick" Style="{StaticResource IslandIconButtonStyle}" Padding="5" ToolTipService.ToolTip="Refresh / Restart Island">
+                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE72C;" FontSize="11.5" />
+                                </Button>
                                 <Button Click="OnOpenSettingsClick" Style="{StaticResource IslandIconButtonStyle}" Padding="5" ToolTipService.ToolTip="Settings">
                                     <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE713;" FontSize="11.5" />
                                 </Button>

@@ -50,6 +50,7 @@ public sealed partial class DynamicIslandWindow : Window
 
     public event EventHandler? OpenDashboardRequested;
     public event EventHandler? OpenSettingsRequested;
+    public event EventHandler? RefreshRestartRequested;
 
     public DynamicIslandWindow(
         IslandViewModel island,
@@ -1048,6 +1049,19 @@ public sealed partial class DynamicIslandWindow : Window
             await BeginSmoothCollapseAsync(force: true);
         }
         catch { }
+    }
+
+    private void OnRefreshRestartClick(object sender, RoutedEventArgs e)
+    {
+        CancelPendingRetract();
+        _animator.RestoreShellImmediate(NotchAssembly);
+        _lastHostWidth = 0;
+        _lastHostHeight = 0;
+        _positioner.ResetBoundsCache();
+        ApplySettingsAndReposition();
+        UpdateClock();
+        RenderState();
+        RefreshRestartRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnOpenSettingsClick(object sender, RoutedEventArgs e) =>

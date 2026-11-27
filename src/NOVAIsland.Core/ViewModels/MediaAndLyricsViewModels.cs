@@ -81,7 +81,7 @@ public sealed partial class MusicViewModel : ObservableObject
 
         NovaUiDispatcher.Post(() =>
         {
-            var prevTrackKey = LyricsViewModel.BuildTrackKey(_currentSession);
+            var prevTrackKey = LyricsViewModel.BuildTrackKey(CurrentSession);
             IsBrowserConnected = connected;
             ConnectedBrowserName = browserName;
             CurrentSession = current;

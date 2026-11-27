@@ -69,7 +69,7 @@ internal static class InstallerEngine
             return info.Split('+')[0];
         }
 
-        return asm.GetName().Version?.ToString(3) ?? "2.4.9";
+        return asm.GetName().Version?.ToString(3) ?? "2.5.1";
     }
     private const string NativeHostName = "com.doomisland.host";
     private const string DefaultExtensionId = "amplhmapoeandecddkchambamhafdcgp";

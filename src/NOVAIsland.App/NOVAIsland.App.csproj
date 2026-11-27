@@ -8,7 +8,7 @@
     <AssemblyName>DOOMIsland</AssemblyName>
     <Authors>ArcSubash</Authors>
     <Company>ArcSubash</Company>
-    <Version Condition="'$(Version)' == ''">2.4.9</Version>
+    <Version Condition="'$(Version)' == ''">2.5.1</Version>
     <ApplicationIcon>Assets\DOOMIsland.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;ARM64</Platforms>
