@@ -4,7 +4,11 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>NOVAIsland.Setup</RootNamespace>
-    <AssemblyName>DOOMIsland-Setup-x64-v2.3.1</AssemblyName>
+    <Authors>ArcSubash</Authors>
+    <Company>ArcSubash</Company>
+    <Version Condition="'$(Version)' == ''">2.4.5</Version>
+    <AssemblyName>DOOMIsland-Setup-x64-v$(Version)</AssemblyName>
+    <ApplicationIcon>..\NOVAIsland.App\Assets\DOOMIsland.ico</ApplicationIcon>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
@@ -14,6 +18,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\NOVAIsland.App\Assets\Images\DOOMIsland-Logo.png"
+                      LogicalName="DOOMIsland.Logo.png" />
     <EmbeddedResource Include="..\..\artifacts\publish\DOOMIsland-AppPayload.zip"
                       LogicalName="DOOMIsland.Payload.zip"
                       Condition="Exists('..\..\artifacts\publish\DOOMIsland-AppPayload.zip')" />

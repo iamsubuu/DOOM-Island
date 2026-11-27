@@ -31,27 +31,38 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
 
     private readonly BrowserMediaBridgeService _extensionBridge;
     private readonly Func<BrowserIntegrationSettings> _settingsProvider;
-    private readonly string _artworkCacheDir;
+    private readonly Func<bool> _localOnlyProvider;
+    private readonly ArtworkEnhancementService _artworkService;
     private readonly ConcurrentDictionary<string, SmtcTrackedSession> _smtcSessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, GlobalSystemMediaTransportControlsSession> _subscribedSessions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _upgradedArtworkMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
     private GlobalSystemMediaTransportControlsSessionManager? _smtcManager;
     private CancellationTokenSource? _cts;
+    private string? _lastPaletteSourceUri;
     private bool _started;
     private bool _smtcReady;
+
+    public (byte R1, byte G1, byte B1, byte R2, byte G2, byte B2)? CurrentArtworkPalette { get; private set; }
+    public event EventHandler<(byte R1, byte G1, byte B1, byte R2, byte G2, byte B2)>? ArtworkPaletteChanged;
 
     public CompositeBrowserMediaBridge(
         BrowserMediaBridgeService extensionBridge,
         SqliteDbContext dbContext,
-        Func<BrowserIntegrationSettings> settingsProvider)
+        Func<BrowserIntegrationSettings> settingsProvider,
+        Func<bool>? localOnlyProvider = null)
     {
         _extensionBridge = extensionBridge;
         _settingsProvider = settingsProvider;
-        _artworkCacheDir = Path.Combine(dbContext.DataDirectory, "cache", "artwork");
-        Directory.CreateDirectory(_artworkCacheDir);
+        _localOnlyProvider = localOnlyProvider ?? (() => false);
+        _artworkService = new ArtworkEnhancementService(Path.Combine(dbContext.DataDirectory, "cache", "artwork"));
 
-        _extensionBridge.StateChanged += (_, _) => RaiseStateChanged();
+        _extensionBridge.StateChanged += (_, _) =>
+        {
+            _ = EnhanceCurrentSessionAndPaletteAsync();
+            RaiseStateChanged();
+        };
     }
 
     public bool IsConnected
@@ -369,13 +380,6 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             posSeconds = Math.Clamp(posSeconds, 0, durationSeconds);
         }
 
-        var settings = _settingsProvider();
-        string? artworkUri = null;
-        if (settings.SyncArtworkAndMetadata && props.Thumbnail is not null)
-        {
-            artworkUri = await CacheThumbnailAsync(props.Thumbnail);
-        }
-
         var title = props.Title?.Trim() ?? string.Empty;
         var artist = props.Artist?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(artist))
@@ -383,7 +387,22 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             artist = identity.DisplayName;
         }
 
-        return new BrowserMediaSession
+        var settings = _settingsProvider();
+        string? artworkUri = null;
+        uint thumbW = 0;
+        uint thumbH = 0;
+        if (settings.SyncArtworkAndMetadata && props.Thumbnail is not null)
+        {
+            (artworkUri, thumbW, thumbH) = await _artworkService.CacheSmtcThumbnailAsync(props.Thumbnail);
+        }
+
+        var trackCacheKey = $"{identity.DisplayName}::{artist}::{title}";
+        if (_upgradedArtworkMap.TryGetValue(trackCacheKey, out var cachedHqUri))
+        {
+            artworkUri = cachedHqUri;
+        }
+
+        var sessionModel = new BrowserMediaSession
         {
             Browser = identity.DisplayName,
             TabId = identity.SyntheticTabId,
@@ -407,35 +426,90 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             CanSeek = playback.Controls.IsPlaybackPositionEnabled && durationSeconds > 0,
             LastUpdatedUtc = DateTimeOffset.UtcNow
         };
+
+        if (settings.SyncArtworkAndMetadata)
+        {
+            var aumid = session.SourceAppUserModelId;
+            _ = EnhanceSmtcArtworkAndPaletteAsync(aumid, trackCacheKey, title, artist, artworkUri, thumbW, thumbH);
+        }
+
+        return sessionModel;
     }
 
-    private async Task<string?> CacheThumbnailAsync(Windows.Storage.Streams.IRandomAccessStreamReference thumbnail)
+    private async Task EnhanceSmtcArtworkAndPaletteAsync(
+        string aumid,
+        string trackCacheKey,
+        string title,
+        string artist,
+        string? initialUri,
+        uint width,
+        uint height)
     {
         try
         {
-            using var stream = await thumbnail.OpenReadAsync();
-            using var netStream = stream.AsStreamForRead();
-            using var ms = new MemoryStream();
-            await netStream.CopyToAsync(ms);
-            var bytes = ms.ToArray();
-            if (bytes.Length == 0)
+            var allowNet = !_localOnlyProvider() && _settingsProvider().SyncArtworkAndMetadata;
+            var upgraded = await _artworkService.TryFetchHighQualityArtworkAsync(
+                title, artist, initialUri, width, height, allowNet, _cts?.Token ?? CancellationToken.None);
+
+            var finalUri = upgraded ?? initialUri;
+            if (upgraded is not null && !string.Equals(upgraded, initialUri, StringComparison.Ordinal))
             {
-                return null;
+                _upgradedArtworkMap[trackCacheKey] = upgraded;
+                if (_smtcSessions.TryGetValue(aumid, out var tracked) &&
+                    string.Equals(tracked.Model.Title, title, StringComparison.Ordinal))
+                {
+                    tracked.Model.ArtworkUrl = upgraded;
+                    RaiseStateChanged();
+                }
             }
 
-            var hash = Convert.ToHexString(SHA256.HashData(bytes))[..16];
-            var ext = bytes.Length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50 ? ".png" : ".jpg";
-            var path = Path.Combine(_artworkCacheDir, $"smtc_{hash}{ext}");
-            if (!File.Exists(path))
-            {
-                await File.WriteAllBytesAsync(path, bytes);
-            }
-
-            return new Uri(path).AbsoluteUri;
+            await UpdatePaletteFromArtworkUriAsync(finalUri);
         }
         catch
         {
-            return null;
+            // Keep existing artwork when background HQ upgrade fails
+        }
+    }
+
+    private async Task EnhanceCurrentSessionAndPaletteAsync()
+    {
+        try
+        {
+            var current = CurrentSession;
+            if (current is null)
+            {
+                return;
+            }
+
+            var allowNet = !_localOnlyProvider() && _settingsProvider().SyncArtworkAndMetadata;
+            var upgraded = await _artworkService.TryFetchHighQualityArtworkAsync(
+                current.Title, current.Artist, current.ArtworkUrl, 0, 0, allowNet, _cts?.Token ?? CancellationToken.None);
+
+            var finalUri = upgraded ?? current.ArtworkUrl;
+            if (upgraded is not null && !string.Equals(upgraded, current.ArtworkUrl, StringComparison.Ordinal))
+            {
+                current.ArtworkUrl = upgraded;
+                RaiseStateChanged();
+            }
+
+            await UpdatePaletteFromArtworkUriAsync(finalUri);
+        }
+        catch { }
+    }
+
+    private async Task UpdatePaletteFromArtworkUriAsync(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri) || string.Equals(_lastPaletteSourceUri, uri, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var palette = await _artworkService.ExtractGradientPaletteAsync(uri);
+        if (palette is { } p)
+        {
+            _lastPaletteSourceUri = uri;
+            CurrentArtworkPalette = p;
+            ArtworkPaletteChanged?.Invoke(this, p);
         }
     }
 

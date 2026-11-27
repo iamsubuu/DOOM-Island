@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
+using NOVAIsland.Core.Configuration;
 using NOVAIsland.Core.Interfaces;
 using NOVAIsland.Core.ViewModels;
 using NOVAIsland.Services.Lyrics;
@@ -20,7 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ILyricsService, LrclibLyricsService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(8);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("DOOMIsland/2.3.1 (+https://github.com/doom-island)");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd($"DOOMIsland/{AppConstants.AppVersion} (+https://github.com/doom-island)");
         });
 
         // Core MVVM ViewModels

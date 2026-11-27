@@ -7,7 +7,7 @@ public sealed class GeneralSettings
 {
     public string AppName { get; set; } = AppConstants.DefaultAppName;
     public string AppShortName { get; set; } = AppConstants.DefaultShortName;
-    public bool LaunchOnStartup { get; set; }
+    public bool LaunchOnStartup { get; set; } = true;
     public bool AlwaysOnTop { get; set; } = true;
     public bool StealthTopBar { get; set; } = true;
     public bool HoverToOpen { get; set; } = true;
@@ -52,6 +52,9 @@ public sealed class AnimationSettings
     public bool NotificationBounce { get; set; } = true;
     public bool SmoothProgressRings { get; set; } = true;
     public bool IdleBreathing { get; set; } = true;
+    public bool GlowPulse { get; set; } = true;
+    public bool EnergySweep { get; set; } = true;
+    public bool ShowGlossySheen { get; set; } = true;
 }
 
 public sealed class MusicSettings
@@ -138,7 +141,7 @@ public sealed class PrivacySettings
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 240;
+    public int SchemaVersion { get; set; } = 244;
     public GeneralSettings General { get; set; } = new();
     public PositionSettings Position { get; set; } = new();
     public AppearanceSettings Appearance { get; set; } = new();

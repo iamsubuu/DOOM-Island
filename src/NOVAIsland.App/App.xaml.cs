@@ -29,6 +29,12 @@ public partial class App : Application
     private SettingsWindow? _settingsWindow;
     private FullscreenLyricsWindow? _fullscreenWindow;
     private CancellationTokenSource? _appCts;
+    private EventWaitHandle? _showDashboardSignal;
+    private RegisteredWaitHandle? _showDashboardWait;
+    private bool _isDashboardVisible;
+    private bool _isSessionLocked;
+    private bool _visualizerRunning;
+    private bool _isShuttingDown;
 
     public App()
     {
@@ -39,6 +45,18 @@ public partial class App : Application
         {
             TryWriteCrashLog(e.Exception);
             e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                TryWriteCrashLog(ex);
+            }
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            TryWriteCrashLog(e.Exception);
+            e.SetObserved();
         };
 
         _host = Host.CreateDefaultBuilder()
@@ -75,6 +93,15 @@ public partial class App : Application
         {
         if (!_ownsMutex)
         {
+            if (!IsLaunchedFromWindowsStartup())
+            {
+                try
+                {
+                    using var signal = EventWaitHandle.OpenExisting(AppConstants.ShowDashboardEventName);
+                    signal.Set();
+                }
+                catch { }
+            }
             Exit();
             return;
         }
@@ -84,6 +111,11 @@ public partial class App : Application
 
         var settingsVm = sp.GetRequiredService<SettingsViewModel>();
         await settingsVm.LoadAsync(_appCts.Token);
+        var startupService = sp.GetRequiredService<IStartupService>();
+        if (settingsVm.Settings.General.LaunchOnStartup && !startupService.IsStartupEnabled())
+        {
+            startupService.SetStartupEnabled(true);
+        }
 
         var themeManager = sp.GetRequiredService<ThemeManager>();
         themeManager.ApplyAppearance(settingsVm.Settings.Appearance);
@@ -104,7 +136,14 @@ public partial class App : Application
         var clipMonitor = sp.GetRequiredService<IClipboardMonitorService>();
         clipMonitor.ItemCaptured += async (_, item) =>
         {
-            await islandVm.Clipboard.RecordCapturedItemAsync(item, settingsVm.Settings.Clipboard.HistoryLimit);
+            try
+            {
+                await islandVm.Clipboard.RecordCapturedItemAsync(item, settingsVm.Settings.Clipboard.HistoryLimit);
+            }
+            catch (Exception ex)
+            {
+                TryWriteCrashLog(ex);
+            }
         };
         clipMonitor.Start();
 
@@ -114,6 +153,10 @@ public partial class App : Application
         {
             islandVm.Notifications.AddOrUpdate(item);
             _islandWindow?.DispatcherQueue.TryEnqueue(() => _islandWindow.PulseNotification());
+        };
+        notifService.NotificationRemoved += (_, nativeId) =>
+        {
+            _islandWindow?.DispatcherQueue.TryEnqueue(() => islandVm.Notifications.RemoveByPlatformId(nativeId));
         };
 
         // Wire Activity monitor (Screenshots + Downloads)
@@ -125,37 +168,99 @@ public partial class App : Application
         string? lastLyricsTrackKey = null;
         bridge.StateChanged += async (_, _) =>
         {
-            var session = bridge.CurrentSession;
-            var key = session is null ? null : $"{session.Artist}::{session.Title}";
-            if (key != lastLyricsTrackKey)
+            try
             {
-                lastLyricsTrackKey = key;
-                await islandVm.Lyrics.LoadForCurrentTrackAsync(!settingsVm.Settings.Privacy.LocalOnlyMode);
-                if (session is not null && islandVm.Mode == IslandMode.Compact && !settingsVm.Settings.General.StealthTopBar)
+                var session = bridge.CurrentSession;
+                var key = session is null ? null : $"{session.Artist}::{session.Title}";
+                if (key != lastLyricsTrackKey)
                 {
-                    _islandWindow?.DispatcherQueue.TryEnqueue(() => islandVm.SetMode(IslandMode.Music));
+                    lastLyricsTrackKey = key;
+                    await islandVm.Lyrics.LoadForCurrentTrackAsync(!settingsVm.Settings.Privacy.LocalOnlyMode);
+                    if (session is not null && islandVm.Mode == IslandMode.Compact && !settingsVm.Settings.General.StealthTopBar)
+                    {
+                        _islandWindow?.DispatcherQueue.TryEnqueue(() => islandVm.SetMode(IslandMode.Music));
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                TryWriteCrashLog(ex);
+            }
         };
+        var compositeBridge = sp.GetRequiredService<CompositeBrowserMediaBridge>();
+        compositeBridge.ArtworkPaletteChanged += (_, p) =>
+        {
+            _islandWindow?.DispatcherQueue.TryEnqueue(() =>
+            {
+                themeManager.UpdateArtworkPalette(p.R1, p.G1, p.B1, p.R2, p.G2, p.B2);
+                if (settingsVm.Settings.Appearance.Theme == ThemePreset.ArtworkDynamic)
+                {
+                    themeManager.ApplyAppearance(settingsVm.Settings.Appearance);
+                }
+            });
+        };
+
         await bridge.StartAsync(_appCts.Token);
 
-        // Wire WASAPI Loopback Audio Equalizer
+        // Wire WASAPI Loopback Audio Equalizer (on-demand for power/CPU efficiency)
         var visualizer = sp.GetRequiredService<IAudioVisualizerService>();
         visualizer.SpectrumUpdated += (_, bands) =>
         {
-            if (settingsVm.Settings.Music.ShowAudioVisualizer && islandVm.Music.IsPlaying)
+            if (!_isSessionLocked && settingsVm.Settings.Music.ShowAudioVisualizer && islandVm.Music.IsPlaying)
             {
                 _islandWindow?.DispatcherQueue.TryEnqueue(() => _islandWindow.UpdateSpectrum(bands));
             }
         };
-        visualizer.Start();
+
+        void SyncVisualizerPowerState()
+        {
+            var shouldRun = !_isSessionLocked
+                && settingsVm.Settings.Music.ShowAudioVisualizer
+                && islandVm.Music.IsPlaying
+                && (!settingsVm.Settings.General.StealthTopBar || islandVm.Mode != IslandMode.Compact);
+
+            if (shouldRun && !_visualizerRunning)
+            {
+                visualizer.Start();
+                _visualizerRunning = true;
+            }
+            else if (!shouldRun && _visualizerRunning)
+            {
+                visualizer.Stop();
+                _visualizerRunning = false;
+            }
+        }
+
+        islandVm.PropertyChanged += (_, _) => SyncVisualizerPowerState();
+        islandVm.Music.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MusicViewModel.IsPlaying) or nameof(MusicViewModel.CurrentSession))
+            {
+                SyncVisualizerPowerState();
+            }
+        };
+        settingsVm.SettingsChanged += (_, _) => SyncVisualizerPowerState();
 
         // Create floating Dynamic Island window
         var positioner = sp.GetRequiredService<MultiMonitorPositioner>();
-        _islandWindow = new DynamicIslandWindow(islandVm, settingsVm, positioner);
+        _islandWindow = new DynamicIslandWindow(islandVm, settingsVm, positioner, themeManager);
         _islandWindow.OpenDashboardRequested += (_, _) => OpenDashboard();
         _islandWindow.OpenSettingsRequested += (_, _) => OpenSettings(SettingsSectionId.General);
+        HideOnCloseInsteadOfExit(_islandWindow, hideWindow: false);
         _islandWindow.Activate();
+
+        // Listen for second-instance "show dashboard" requests when launched from Start Menu / Desktop
+        try
+        {
+            _showDashboardSignal = new EventWaitHandle(false, EventResetMode.AutoReset, AppConstants.ShowDashboardEventName);
+            _showDashboardWait = ThreadPool.RegisterWaitForSingleObject(
+                _showDashboardSignal,
+                (_, _) => _islandWindow?.DispatcherQueue.TryEnqueue(OpenDashboard),
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+        }
+        catch { }
 
         // Open Fullscreen Lyrics when requested by ViewModel
         islandVm.Lyrics.PropertyChanged += (_, e) =>
@@ -192,26 +297,40 @@ public partial class App : Application
         {
             switch (action)
             {
-                case ShortcutAction.ToggleIsland: islandVm.ToggleExpand(islandVm.Music.HasActiveMedia, settingsVm.Settings.General.StealthTopBar); break;
-                case ShortcutAction.OpenMusic: islandVm.SetMode(IslandMode.Expanded); break;
-                case ShortcutAction.OpenLyrics: islandVm.SetMode(IslandMode.Lyrics); break;
-                case ShortcutAction.OpenClipboard: islandVm.SetMode(IslandMode.Clipboard); break;
-                case ShortcutAction.OpenTimer: islandVm.SetMode(IslandMode.Timer); break;
-                case ShortcutAction.OpenDashboard: OpenDashboard(); break;
-                case ShortcutAction.OpenSettings: OpenSettings(SettingsSectionId.General); break;
-                case ShortcutAction.TriggerScreenshot: await islandVm.Activity.CaptureScreenshotCommand.ExecuteAsync(null); break;
+                case ShortcutAction.ToggleIsland:
+                case ShortcutAction.OpenMusic:
+                case ShortcutAction.OpenLyrics:
+                case ShortcutAction.OpenClipboard:
+                case ShortcutAction.OpenTimer:
+                    await _islandWindow.HandleShortcutAsync(action);
+                    break;
+                case ShortcutAction.OpenDashboard:
+                    OpenDashboard();
+                    break;
+                case ShortcutAction.OpenSettings:
+                    OpenSettings(SettingsSectionId.General);
+                    break;
+                case ShortcutAction.TriggerScreenshot:
+                    await islandVm.Activity.CaptureScreenshotCommand.ExecuteAsync(null);
+                    break;
             }
         });
         hotkeys.RegisterBindings(settingsVm.Settings.Shortcuts);
 
         var lockWatcher = sp.GetRequiredService<SessionLockWatcher>();
+        lockWatcher.LockStateChanged += (_, locked) =>
+        {
+            _isSessionLocked = locked;
+            SyncVisualizerPowerState();
+            _islandWindow?.DispatcherQueue.TryEnqueue(() => _islandWindow.SetSessionLocked(locked));
+        };
         lockWatcher.Start();
 
-        // Start background timers (100ms stopwatch, 1s playback/lyrics/timer, system metrics refresh)
+        // Start adaptive power-saving background loop
         StartBackgroundLoops(islandVm, settingsVm, _appCts.Token);
 
-        // Show Dashboard on normal launch unless --minimized passed (e.g., Windows startup)
-        if (!Environment.GetCommandLineArgs().Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)))
+        // Show Dashboard only on explicit interactive launch; Windows startup shows only the stealth bar
+        if (!IsLaunchedFromWindowsStartup())
         {
             OpenDashboard();
         }
@@ -223,34 +342,138 @@ public partial class App : Application
         }
     }
 
+    private static bool IsLaunchedFromWindowsStartup()
+    {
+        if (Environment.GetCommandLineArgs().Any(a =>
+            a.Equals("--minimized", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--background", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--startup", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        try
+        {
+            var activated = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs();
+            return activated.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.StartupTask;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void StartBackgroundLoops(IslandViewModel islandVm, SettingsViewModel settingsVm, CancellationToken ct)
     {
         var dq = _islandWindow!.DispatcherQueue;
+        var lastSecondTicks = Environment.TickCount64;
+        var lastSystemRefreshTicks = Environment.TickCount64;
+        var wasSystemPanelActive = false;
 
         _ = Task.Run(async () =>
         {
-            using var timer100ms = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
-            var tickCount = 0;
-            while (await timer100ms.WaitForNextTickAsync(ct))
+            while (!ct.IsCancellationRequested)
             {
-                tickCount++;
-                dq.TryEnqueue(() =>
+                try
                 {
-                    islandVm.Timer.TickStopwatchTenth();
-                    islandVm.Music.AdvancePlaybackByClock();
-                    islandVm.Lyrics.UpdateActiveLine(islandVm.Music.LivePositionSeconds);
-                    if (tickCount % 10 == 0)
-                    {
-                        islandVm.Timer.TickOneSecond();
-                    }
-                });
+                    var stopwatchRunning = islandVm.Timer.IsStopwatchRunning;
+                    var oneSecondTimerRunning = islandVm.Timer.IsCountdownRunning || islandVm.Timer.IsPomodoroRunning;
+                    var visualPlaybackActive = islandVm.Music.IsPlaying && (
+                        _isDashboardVisible ||
+                        _fullscreenWindow is not null ||
+                        !settingsVm.Settings.General.StealthTopBar ||
+                        islandVm.Mode is IslandMode.Music or IslandMode.Expanded or IslandMode.Lyrics);
 
-                if (tickCount % Math.Max(10, settingsVm.Settings.Widgets.RefreshIntervalMs / 100) == 0)
+                    var needsFastTick = !_isSessionLocked && (stopwatchRunning || visualPlaybackActive);
+                    await Task.Delay(needsFastTick ? 100 : 1000, ct);
+
+                    var now = Environment.TickCount64;
+                    var elapsedSecond = now - lastSecondTicks >= 1000;
+                    if (elapsedSecond)
+                    {
+                        lastSecondTicks = now;
+                    }
+
+                    if (stopwatchRunning || islandVm.Music.IsPlaying || (elapsedSecond && oneSecondTimerRunning))
+                    {
+                        dq.TryEnqueue(() =>
+                        {
+                            try
+                            {
+                                if (stopwatchRunning)
+                                {
+                                    islandVm.Timer.TickStopwatchTenth();
+                                }
+                                if (islandVm.Music.IsPlaying)
+                                {
+                                    islandVm.Music.AdvancePlaybackByClock();
+                                    islandVm.Lyrics.UpdateActiveLine(islandVm.Music.LivePositionSeconds);
+                                }
+                                if (elapsedSecond && oneSecondTimerRunning)
+                                {
+                                    islandVm.Timer.TickOneSecond();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                TryWriteCrashLog(ex);
+                            }
+                        });
+                    }
+
+                    var systemUiVisible = !_isSessionLocked && (_isDashboardVisible || islandVm.Mode == IslandMode.System);
+                    var refreshMs = systemUiVisible
+                        ? Math.Clamp(settingsVm.Settings.Widgets.RefreshIntervalMs, 1500, 10000)
+                        : 30000;
+
+                    if ((systemUiVisible && !wasSystemPanelActive) || (now - lastSystemRefreshTicks >= refreshMs && !_isSessionLocked))
+                    {
+                        lastSystemRefreshTicks = now;
+                        await islandVm.System.RefreshAsync(ct);
+                    }
+                    wasSystemPanelActive = systemUiVisible;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    await islandVm.System.RefreshAsync(ct);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    TryWriteCrashLog(ex);
                 }
             }
         }, ct);
+    }
+
+    private void HideOnCloseInsteadOfExit(Window window, bool hideWindow)
+    {
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            appWindow.Closing += (sender, args) =>
+            {
+                if (_isShuttingDown)
+                {
+                    return;
+                }
+
+                args.Cancel = true;
+                if (hideWindow)
+                {
+                    if (ReferenceEquals(window, _dashboardWindow))
+                    {
+                        _isDashboardVisible = false;
+                    }
+                    sender.Hide();
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            TryWriteCrashLog(ex);
+        }
     }
 
     private void OpenDashboard()
@@ -260,8 +483,21 @@ public partial class App : Application
         {
             _dashboardWindow = new DashboardWindow(sp.GetRequiredService<IslandViewModel>(), sp.GetRequiredService<SettingsViewModel>());
             _dashboardWindow.OpenSettingsSectionRequested += (_, sec) => OpenSettings(sec);
-            _dashboardWindow.Closed += (_, _) => _dashboardWindow = null;
+            HideOnCloseInsteadOfExit(_dashboardWindow, hideWindow: true);
+            _dashboardWindow.Closed += (_, _) =>
+            {
+                _isDashboardVisible = false;
+                _dashboardWindow = null;
+            };
         }
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_dashboardWindow);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+            appWindow.Show(true);
+        }
+        catch { }
+        _isDashboardVisible = true;
         _dashboardWindow.Activate();
     }
 
@@ -279,9 +515,18 @@ public partial class App : Application
                 sp.GetRequiredService<IWindowPositioningService>(),
                 sp.GetRequiredService<StorageFootprintService>(),
                 sp.GetRequiredService<ILyricsCacheRepository>(),
-                sp.GetRequiredService<IClipboardRepository>());
+                sp.GetRequiredService<IClipboardRepository>(),
+                sp.GetRequiredService<ThemeManager>());
+            HideOnCloseInsteadOfExit(_settingsWindow, hideWindow: true);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
+        try
+        {
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_settingsWindow);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+            appWindow.Show(true);
+        }
+        catch { }
         _settingsWindow.NavigateTo(section);
         _settingsWindow.Activate();
     }
@@ -306,11 +551,21 @@ public partial class App : Application
 
     private void Shutdown()
     {
+        _isShuttingDown = true;
         _appCts?.Cancel();
+        _showDashboardWait?.Unregister(null);
+        _showDashboardWait = null;
+        _showDashboardSignal?.Dispose();
+        _showDashboardSignal = null;
+        _islandWindow?.PrepareForShutdown();
         _host.Services.GetRequiredService<TrayHostService>().DisposeTray();
         _host.Services.GetRequiredService<IHotkeyService>().UnregisterAll();
         _host.Services.GetRequiredService<IClipboardMonitorService>().Stop();
         _host.Services.GetRequiredService<IAudioVisualizerService>().Stop();
+        try { _dashboardWindow?.Close(); } catch { }
+        try { _settingsWindow?.Close(); } catch { }
+        try { _fullscreenWindow?.Close(); } catch { }
+        try { _islandWindow?.Close(); } catch { }
         if (_ownsMutex)
         {
             _singleInstanceMutex.ReleaseMutex();

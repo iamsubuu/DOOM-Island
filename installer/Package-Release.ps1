@@ -2,6 +2,11 @@ param(
     [string]$DotnetExe = "C:\Program Files\dotnet\dotnet.exe",
     [ValidateSet("All", "Exe", "Msix")]
     [string]$Format = "All",
+    [string]$Version = "",
+    [switch]$StorePackage,
+    [string]$PackageName = "",
+    [string]$PackagePublisher = "",
+    [string]$PublisherDisplayName = "",
     [string]$PfxPath = $env:DOOM_SIGN_PFX,
     [string]$PfxPassword = $env:DOOM_SIGN_PFX_PASSWORD,
     [string]$Thumbprint = $env:DOOM_SIGN_THUMBPRINT
@@ -9,12 +14,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$constantsPath = Join-Path $repoRoot "src\NOVAIsland.Core\Configuration\AppConstants.cs"
-$constantsRaw = Get-Content -Path $constantsPath -Raw
-if ($constantsRaw -notmatch 'AppVersion\s*=\s*"([^"]+)"') {
-    throw "Could not parse AppVersion from $constantsPath"
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $constantsPath = Join-Path $repoRoot "src\NOVAIsland.Core\Configuration\AppConstants.cs"
+    $constantsRaw = Get-Content -Path $constantsPath -Raw
+    if ($constantsRaw -notmatch 'AppVersion\s*=\s*"([^"]+)"') {
+        throw "Could not parse AppVersion from $constantsPath"
+    }
+    $appVersion = $Matches[1]
 }
-$appVersion = $Matches[1]
+else {
+    $appVersion = $Version.Trim()
+}
 $msixVersion = if ($appVersion -match '^\d+\.\d+\.\d+\.\d+$') { $appVersion } else { "$appVersion.0" }
 
 $publishRoot = Join-Path $repoRoot "artifacts\publish"
@@ -38,14 +48,39 @@ function Find-MakeAppxExe {
     throw "makeappx.exe not found. Restore NuGet packages (Microsoft.Windows.SDK.BuildTools) or install Windows 10/11 SDK."
 }
 
-if (Test-Path $publishRoot) { Remove-Item -Path $publishRoot -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $appOut, $hostStage, $msixOut, $installerOut | Out-Null
+function Reset-StageDir {
+    param([string]$Path)
+
+    if (Test-Path $Path) {
+        for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+                Remove-Item -Path $Path -Recurse -Force -ErrorAction Stop
+                break
+            }
+            catch {
+                if ($attempt -eq 5) { throw }
+                Start-Sleep -Milliseconds 500
+            }
+        }
+    }
+    New-Item -ItemType Directory -Force -Path $Path | Out-Null
+}
+
+New-Item -ItemType Directory -Force -Path $installerOut | Out-Null
+Reset-StageDir -Path $hostStage
+
+if ($Format -in @("All", "Exe")) {
+    Reset-StageDir -Path $appOut
+}
+if ($Format -in @("All", "Msix")) {
+    Reset-StageDir -Path $msixOut
+}
 
 Write-Host "DOOM Island Release Packager v$appVersion (Format=$Format)"
 
 Write-Host "1/7 Publishing & signing shared NOVAIsland.BrowserHost (Release, win-x64, self-contained)..."
 & $DotnetExe publish (Join-Path $repoRoot "src\NOVAIsland.BrowserHost\NOVAIsland.BrowserHost.csproj") `
-    -c Release -r win-x64 --self-contained true -o $hostStage
+    -c Release -r win-x64 -p:Version=$appVersion --self-contained true -o $hostStage
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $signedHostExe = Join-Path $hostStage "NOVAIsland.BrowserHost.exe"
@@ -63,7 +98,7 @@ Compress-Archive -Path (Join-Path $repoRoot "src\NOVAIsland.BrowserExtension\*")
 if ($Format -in @("All", "Exe")) {
     Write-Host "3/7 Publishing & signing unpackaged NOVAIsland.App (WindowsPackageType=None, win-x64, self-contained)..."
     & $DotnetExe publish (Join-Path $repoRoot "src\NOVAIsland.App\NOVAIsland.App.csproj") `
-        -c Release -r win-x64 -p:Platform=x64 -p:WindowsPackageType=None --self-contained true -o $appOut
+        -c Release -r win-x64 -p:Platform=x64 -p:WindowsPackageType=None -p:Version=$appVersion --disable-build-servers --self-contained true -o $appOut
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     $appHostDest = Join-Path $appOut "BrowserHost"
@@ -96,7 +131,7 @@ if ($Format -in @("All", "Exe")) {
 
     $setupBuildDir = Join-Path $publishRoot "setup_bin"
     & $DotnetExe publish (Join-Path $repoRoot "src\NOVAIsland.Setup\NOVAIsland.Setup.csproj") `
-        -c Release -r win-x64 --self-contained true -o $setupBuildDir
+        -c Release -r win-x64 -p:Version=$appVersion --self-contained true -o $setupBuildDir
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     $setupExeSrc = Join-Path $setupBuildDir "DOOMIsland-Setup-x64-v$appVersion.exe"
@@ -110,7 +145,7 @@ if ($Format -in @("All", "Exe")) {
     $iscc = Get-Command "iscc.exe" -ErrorAction SilentlyContinue
     if ($iscc) {
         Write-Host "Optional: Building & signing Inno Setup EXE installer..."
-        & $iscc.Source (Join-Path $PSScriptRoot "DOOMIsland.iss")
+        & $iscc.Source "/DAppVersion=$appVersion" (Join-Path $PSScriptRoot "DOOMIsland.iss")
         $innoExe = Join-Path $installerOut "DOOMIsland-Setup-Inno-x64-v$appVersion.exe"
         if (Test-Path $innoExe) {
             & $signScript -TargetPaths @($innoExe) -PfxPath $PfxPath -PfxPassword $PfxPassword -Thumbprint $Thumbprint
@@ -121,19 +156,30 @@ if ($Format -in @("All", "Exe")) {
 if ($Format -in @("All", "Msix")) {
     Write-Host "6/7 Publishing & staging packaged NOVAIsland.App (WindowsPackageType=MSIX, win-x64, self-contained)..."
     & $DotnetExe publish (Join-Path $repoRoot "src\NOVAIsland.App\NOVAIsland.App.csproj") `
-        -c Release -r win-x64 -p:Platform=x64 -p:WindowsPackageType=MSIX -p:AppxPackageSigningEnabled=false --self-contained true -o $msixOut
+        -c Release -r win-x64 -p:Platform=x64 -p:WindowsPackageType=MSIX -p:AppxPackageSigningEnabled=false -p:Version=$appVersion --disable-build-servers --self-contained true -o $msixOut
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     $generatedManifest = Get-ChildItem (Join-Path $repoRoot "src\NOVAIsland.App\bin\x64\Release") -Filter "AppxManifest.xml" -Recurse |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1 -ExpandProperty FullName
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
     if (-not $generatedManifest) {
         $generatedManifest = Join-Path $repoRoot "src\NOVAIsland.App\Package.appxmanifest"
     }
 
     $stagedManifest = Join-Path $msixOut "AppxManifest.xml"
     [xml]$manifestXml = Get-Content -Path $generatedManifest -Raw
-    $manifestXml.Package.Identity.Publisher = $certSubject
+    if (-not [string]::IsNullOrWhiteSpace($PackageName)) {
+        $manifestXml.Package.Identity.Name = $PackageName.Trim()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PublisherDisplayName)) {
+        $manifestXml.Package.Properties.PublisherDisplayName = $PublisherDisplayName.Trim()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PackagePublisher)) {
+        $manifestXml.Package.Identity.Publisher = $PackagePublisher.Trim()
+    }
+    elseif (-not $StorePackage) {
+        $manifestXml.Package.Identity.Publisher = $certSubject
+    }
     $manifestXml.Package.Identity.Version = $msixVersion
     $manifestXml.Save($stagedManifest)
 
@@ -147,18 +193,23 @@ if ($Format -in @("All", "Msix")) {
         -TargetPaths @((Join-Path $msixOut "DOOMIsland.exe")) `
         -PfxPath $PfxPath -PfxPassword $PfxPassword -Thumbprint $Thumbprint -PublicCertOut $publicCertOut
 
-    Write-Host "7/7 Packing & signing MSIX package (DOOMIsland-x64-v$appVersion.msix)..."
+    Write-Host "7/7 Packing MSIX package (DOOMIsland-x64-v$appVersion.msix)..."
     $makeAppx = Find-MakeAppxExe
     $msixDst = Join-Path $installerOut "DOOMIsland-x64-v$appVersion.msix"
     if (Test-Path $msixDst) { Remove-Item $msixDst -Force }
     & $makeAppx pack /o /d $msixOut /p $msixDst
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    & $signScript `
-        -TargetPaths @($msixDst) `
-        -PfxPath $PfxPath -PfxPassword $PfxPassword -Thumbprint $Thumbprint -PublicCertOut $publicCertOut
-
-    Copy-Item -Path (Join-Path $PSScriptRoot "Install-DOOMIsland-MSIX.ps1") -Destination $installerOut -Force
+    $effectivePublisher = $manifestXml.Package.Identity.Publisher
+    if ($StorePackage -or ($effectivePublisher -ne $certSubject)) {
+        Write-Host "Skipping local MSIX signing for Store submission (Publisher=$effectivePublisher; Microsoft Store re-signs on ingestion)."
+    }
+    else {
+        & $signScript `
+            -TargetPaths @($msixDst) `
+            -PfxPath $PfxPath -PfxPassword $PfxPassword -Thumbprint $Thumbprint -PublicCertOut $publicCertOut
+        Copy-Item -Path (Join-Path $PSScriptRoot "Install-DOOMIsland-MSIX.ps1") -Destination $installerOut -Force
+    }
 }
 
 Get-ChildItem $installerOut | Select-Object Name, Length

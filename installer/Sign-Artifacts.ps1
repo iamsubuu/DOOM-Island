@@ -34,16 +34,16 @@ function Resolve-SigningCertificate {
     }
     else {
         $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
-            Where-Object { $_.Subject -eq "CN=DOOM Island" -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
+            Where-Object { $_.Subject -eq "CN=AAFF5C79-617E-404B-893B-24B04B60D21C" -and $_.NotAfter -gt (Get-Date).AddDays(30) } |
             Sort-Object NotAfter -Descending |
             Select-Object -First 1
 
         if (-not $cert) {
-            Write-Host "Creating local self-signed Authenticode certificate (CN=DOOM Island) in Cert:\CurrentUser\My..."
+            Write-Host "Creating local self-signed Authenticode certificate (CN=AAFF5C79-617E-404B-893B-24B04B60D21C) in Cert:\CurrentUser\My..."
             $cert = New-SelfSignedCertificate `
                 -Type CodeSigningCert `
-                -Subject "CN=DOOM Island" `
-                -FriendlyName "DOOM Island Local Code Signing" `
+                -Subject "CN=AAFF5C79-617E-404B-893B-24B04B60D21C" `
+                -FriendlyName "ArcSubash Local Code Signing" `
                 -CertStoreLocation "Cert:\CurrentUser\My" `
                 -NotAfter (Get-Date).AddYears(5)
         }
@@ -100,15 +100,23 @@ function Invoke-MsixSign {
         $baseArgs += @("/sha1", $Cert.Thumbprint)
     }
 
-    $tsArgs = $baseArgs + @("/tr", "http://timestamp.digicert.com", "/td", "SHA256", $FilePath)
-    $null = & $signTool @tsArgs 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Timestamp server unreachable or rejected; signing MSIX without external timestamp for $FilePath"
-        $noTsArgs = $baseArgs + @($FilePath)
-        $out = & $signTool @noTsArgs 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "signtool.exe failed for $FilePath (exit $LASTEXITCODE): $($out -join [Environment]::NewLine)"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $tsArgs = $baseArgs + @("/tr", "http://timestamp.digicert.com", "/td", "SHA256", $FilePath)
+        $tsOut = & $signTool @tsArgs 2>&1
+        $tsExit = $LASTEXITCODE
+        if ($tsExit -ne 0) {
+            Write-Warning "Timestamp server unreachable or rejected for $FilePath; signing MSIX without external timestamp"
+            $noTsArgs = $baseArgs + @($FilePath)
+            $out = & $signTool @noTsArgs 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "signtool.exe failed for $FilePath (exit $LASTEXITCODE): $($out -join [Environment]::NewLine)"
+            }
         }
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
     }
 
     $sig = Get-AuthenticodeSignature -FilePath $FilePath
@@ -116,6 +124,44 @@ function Invoke-MsixSign {
         throw "MSIX signature verification failed for $FilePath : $($sig.Status) ($($sig.StatusMessage))"
     }
     Write-Host "Signed $(Split-Path -Leaf $FilePath) | Thumbprint: $($Cert.Thumbprint) | Status: $($sig.Status)"
+}
+
+function Invoke-PeSignWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(Mandatory = $true)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]$Cert
+    )
+
+    $useTimestamp = $true
+    for ($attempt = 1; $attempt -le 8; $attempt++) {
+        try {
+            if ($useTimestamp) {
+                return Set-AuthenticodeSignature -FilePath $FilePath -Certificate $Cert -HashAlgorithm SHA256 -TimestampServer "http://timestamp.digicert.com"
+            }
+
+            return Set-AuthenticodeSignature -FilePath $FilePath -Certificate $Cert -HashAlgorithm SHA256
+        }
+        catch {
+            $msg = $_.Exception.Message
+            if ($msg -match "being used by another process" -or $_.Exception -is [System.IO.IOException]) {
+                Start-Sleep -Milliseconds 750
+                continue
+            }
+
+            if ($useTimestamp) {
+                Write-Warning "Timestamp server unreachable; signing without external timestamp for $FilePath"
+                $useTimestamp = $false
+                Start-Sleep -Milliseconds 500
+                continue
+            }
+
+            throw
+        }
+    }
+
+    return Set-AuthenticodeSignature -FilePath $FilePath -Certificate $Cert -HashAlgorithm SHA256
 }
 
 $cert = Resolve-SigningCertificate
@@ -131,14 +177,7 @@ foreach ($path in $TargetPaths) {
         continue
     }
 
-    $sig = $null
-    try {
-        $sig = Set-AuthenticodeSignature -FilePath $path -Certificate $cert -HashAlgorithm SHA256 -TimestampServer "http://timestamp.digicert.com"
-    }
-    catch {
-        Write-Warning "Timestamp server unreachable; signing without external timestamp for $path"
-        $sig = Set-AuthenticodeSignature -FilePath $path -Certificate $cert -HashAlgorithm SHA256
-    }
+    $sig = Invoke-PeSignWithRetry -FilePath $path -Cert $cert
 
     if ($sig.Status -eq "NotSigned" -or $sig.Status -eq "HashMismatch") {
         throw "Authenticode signing failed for $path : $($sig.Status) ($($sig.StatusMessage))"

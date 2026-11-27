@@ -66,8 +66,14 @@ public enum ColorMode
 public enum ThemePreset
 {
     PureBlack,
+    DrDoom,
     Obsidian,
     Graphite,
+    GlossyPink,
+    Venom,
+    SpiderMan,
+    CyberViolet,
+    ArtworkDynamic,
     Contrast
 }
 
@@ -84,6 +90,9 @@ public enum AnimationPreset
     Fluid,
     Snappy,
     Silk,
+    VenomLiquid,
+    GlossyBounce,
+    ZeroGravity,
     Instant
 }
 

@@ -19,15 +19,32 @@ public sealed partial class DynamicIslandWindow : Window
     private readonly IslandViewModel _island;
     private readonly SettingsViewModel _settings;
     private readonly MultiMonitorPositioner _positioner;
+    private readonly Services.ThemeManager _themeManager;
     private readonly CompositionSpringAnimator _animator = new();
     private readonly DispatcherTimer _autoCollapseTimer = new();
     private readonly DispatcherTimer _hoverCloseTimer = new();
+    private readonly DispatcherTimer _hoverTrackTimer = new();
 
     private IntPtr _hwnd;
     private Win32Interop.WndProcDelegate? _subProc;
     private IntPtr _prevWndProc;
+    private IntPtr _outsideMouseHook;
+    private LowLevelMouseProc? _outsideMouseHookProc;
     private string? _lastCompactArtUri;
     private bool _wasExpanded;
+    private bool _isRetracting;
+    private bool _allowShutdownClose;
+    private bool _openedByShortcut;
+    private ShortcutAction? _activeShortcutAction;
+    private bool _isSessionLocked;
+    private bool? _lastEnergyRunning;
+    private bool? _lastIdleBreathing;
+    private bool? _lastIslandShown;
+    private double _lastEnergyWidth;
+    private int _lastHostWidth;
+    private int _lastHostHeight;
+    private bool? _lastFlushTop;
+    private DateTime _hoverOpenCommitUntilUtc = DateTime.MinValue;
     private CancellationTokenSource? _retractCts;
 
     public event EventHandler? OpenDashboardRequested;
@@ -36,33 +53,46 @@ public sealed partial class DynamicIslandWindow : Window
     public DynamicIslandWindow(
         IslandViewModel island,
         SettingsViewModel settings,
-        MultiMonitorPositioner positioner)
+        MultiMonitorPositioner positioner,
+        Services.ThemeManager themeManager)
     {
         InitializeComponent();
         _island = island;
         _settings = settings;
         _positioner = positioner;
+        _themeManager = themeManager;
 
         this.SystemBackdrop = new TransparentTintBackdrop(Color.FromArgb(0, 0, 0, 0));
 
         _autoCollapseTimer.Tick += async (_, _) =>
         {
             _autoCollapseTimer.Stop();
-            if (_island.IsExpanded && !_island.IsHovered && !IsTextBoxFocused())
+            try
             {
-                await BeginSmoothCollapseAsync();
+                if (_island.IsExpanded && !_openedByShortcut && !_island.IsHovered && !IsTextBoxFocused() && DateTime.UtcNow >= _hoverOpenCommitUntilUtc)
+                {
+                    await BeginSmoothCollapseAsync();
+                }
             }
+            catch { }
         };
 
-        _hoverCloseTimer.Interval = TimeSpan.FromMilliseconds(340);
+        _hoverCloseTimer.Interval = TimeSpan.FromMilliseconds(260);
         _hoverCloseTimer.Tick += async (_, _) =>
         {
             _hoverCloseTimer.Stop();
-            if (_island.IsExpanded && !_island.IsHovered && !IsTextBoxFocused())
+            try
             {
-                await BeginSmoothCollapseAsync();
+                if (_island.IsExpanded && !_openedByShortcut && !IsCursorInsideExpandedNotch() && !IsTextBoxFocused() && DateTime.UtcNow >= _hoverOpenCommitUntilUtc)
+                {
+                    await BeginSmoothCollapseAsync();
+                }
             }
+            catch { }
         };
+
+        _hoverTrackTimer.Interval = TimeSpan.FromMilliseconds(75);
+        _hoverTrackTimer.Tick += (_, _) => TrackExpandedHoverState();
 
         MusicPanel.Bind(_island.Music, _island.System, _island, _island.Lyrics);
         LyricsPanel.Bind(_island.Lyrics, _island.Music, _settings);
@@ -77,11 +107,59 @@ public sealed partial class DynamicIslandWindow : Window
         _island.Timer.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RenderBadges);
         _island.Notifications.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RenderBadges);
         _settings.SettingsChanged += (_, _) => DispatcherQueue.TryEnqueue(ApplySettingsAndReposition);
+        _themeManager.ArtworkPaletteUpdated += (_, _) => DispatcherQueue.TryEnqueue(ApplySettingsAndReposition);
         NotchAssembly.SizeChanged += (_, _) => RepositionForActualShellSize();
 
         ConfigureWindowChrome();
         ApplySettingsAndReposition();
         RenderState();
+    }
+
+    public void PrepareForShutdown()
+    {
+        _allowShutdownClose = true;
+        UninstallOutsideClickHook();
+    }
+
+    public void SetSessionLocked(bool isLocked)
+    {
+        _isSessionLocked = isLocked;
+        _lastEnergyRunning = null;
+        _lastIdleBreathing = null;
+        ApplySettingsAndReposition();
+    }
+
+    public async Task HandleShortcutAsync(ShortcutAction action)
+    {
+        var targetMode = action switch
+        {
+            ShortcutAction.OpenMusic => IslandMode.Expanded,
+            ShortcutAction.OpenLyrics => IslandMode.Lyrics,
+            ShortcutAction.OpenClipboard => IslandMode.Clipboard,
+            ShortcutAction.OpenTimer => IslandMode.Timer,
+            ShortcutAction.ToggleIsland => _island.Music.HasActiveMedia ? IslandMode.Expanded : IslandMode.System,
+            _ => IslandMode.Expanded
+        };
+
+        var shouldCollapse = _island.IsExpanded && (
+            action == ShortcutAction.ToggleIsland ||
+            _activeShortcutAction == action ||
+            _island.Mode == targetMode);
+
+        if (shouldCollapse)
+        {
+            await BeginSmoothCollapseAsync(force: true);
+            return;
+        }
+
+        _openedByShortcut = true;
+        _activeShortcutAction = action;
+        _hoverTrackTimer.Stop();
+        _hoverCloseTimer.Stop();
+        _autoCollapseTimer.Stop();
+        _hoverOpenCommitUntilUtc = DateTime.MinValue;
+        _island.SetMode(targetMode);
+        InstallOutsideClickHook();
     }
 
     public void UpdateSpectrum(ReadOnlySpan<float> bands)
@@ -141,6 +219,11 @@ public sealed partial class DynamicIslandWindow : Window
 
     private IntPtr CustomWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == 0x0010 /* WM_CLOSE */ && !_allowShutdownClose)
+        {
+            return IntPtr.Zero;
+        }
+
         if (msg == Win32Interop.WM_NCCALCSIZE && wParam != IntPtr.Zero)
         {
             return IntPtr.Zero;
@@ -168,7 +251,7 @@ public sealed partial class DynamicIslandWindow : Window
 
             var stealth = _island.Mode == IslandMode.Compact && _settings.Settings.General.StealthTopBar;
             var hitWidth = NotchAssembly.ActualWidth > 0 ? NotchAssembly.ActualWidth : PillShell.Width;
-            var hitHeight = NotchAssembly.ActualHeight > 0 ? NotchAssembly.ActualHeight : (stealth ? 14 : 40);
+            var hitHeight = NotchAssembly.ActualHeight > 0 ? NotchAssembly.ActualHeight : (stealth ? 10 : 40);
             var left = (RootHost.ActualWidth - hitWidth) / 2.0;
 
             if (dipX < left || dipX > left + hitWidth || dipY < 0 || dipY > hitHeight)
@@ -183,7 +266,6 @@ public sealed partial class DynamicIslandWindow : Window
     public void ApplySettingsAndReposition()
     {
         var s = _settings.Settings;
-        CompactWordmark.Text = _settings.ResolvedShortName;
         var isStealthCompact = _island.Mode == IslandMode.Compact && s.General.StealthTopBar;
 
         var targetWidth = _island.Mode switch
@@ -198,14 +280,14 @@ public sealed partial class DynamicIslandWindow : Window
         var actualHeight = PillShell.ActualHeight > 0 ? PillShell.ActualHeight : 40;
         var targetHeight = _island.Mode switch
         {
-            IslandMode.Compact => isStealthCompact ? 14 : s.Appearance.IslandHeight,
+            IslandMode.Compact => isStealthCompact ? 10 : s.Appearance.IslandHeight,
             IslandMode.Music => Math.Max(40, s.Appearance.IslandHeight + 4),
             IslandMode.Expanded => Math.Max(180, actualHeight),
             _ => Math.Max(220, actualHeight)
         };
 
         PillShell.Width = targetWidth;
-        PillShell.Height = isStealthCompact ? 14 : double.NaN;
+        PillShell.Height = isStealthCompact ? 10 : double.NaN;
 
         var showEars = !isStealthCompact && s.General.StealthTopBar;
         LeftNotchEar.Visibility = showEars ? Visibility.Visible : Visibility.Collapsed;
@@ -215,31 +297,74 @@ public sealed partial class DynamicIslandWindow : Window
             ? Math.Clamp(s.Appearance.CornerRadius + 2, 22, 32)
             : Math.Max(18, s.Appearance.CornerRadius);
 
+        var palette = _themeManager.ResolveIslandPalette(s.Appearance);
+        StealthLineStartStop.Color = Color.FromArgb(40, palette.PrimaryAccent.R, palette.PrimaryAccent.G, palette.PrimaryAccent.B);
+        StealthLineMidStop.Color = Color.FromArgb(240, palette.PrimaryAccent.R, palette.PrimaryAccent.G, palette.PrimaryAccent.B);
+        StealthLineMid2Stop.Color = Color.FromArgb(240, palette.SecondaryAccent.R, palette.SecondaryAccent.G, palette.SecondaryAccent.B);
+        StealthLineEndStop.Color = Color.FromArgb(40, palette.SecondaryAccent.R, palette.SecondaryAccent.G, palette.SecondaryAccent.B);
+
         if (isStealthCompact)
         {
             DoomAmbientGlow.Visibility = Visibility.Collapsed;
             DoomEnergySweep.Visibility = Visibility.Collapsed;
             GlassSheenLayer.Visibility = Visibility.Collapsed;
-            _animator.StopDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep);
+            if (_lastEnergyRunning != false)
+            {
+                _animator.StopDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep);
+                _lastEnergyRunning = false;
+            }
             PillShell.CornerRadius = new CornerRadius(0, 0, 10, 10);
             PillShell.BorderThickness = new Thickness(0);
             PillShell.Background = new SolidColorBrush(Color.FromArgb(2, 0, 0, 0));
         }
         else
         {
-            DoomAmbientGlow.Visibility = Visibility.Visible;
-            DoomEnergySweep.Visibility = Visibility.Visible;
-            GlassSheenLayer.Visibility = Visibility.Visible;
-            _animator.StartDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep, targetWidth, s.Animation.ReduceMotion);
+            AmbientStop0.Color = Color.FromArgb(palette.AmbientTopAlpha, palette.PrimaryAccent.R, palette.PrimaryAccent.G, palette.PrimaryAccent.B);
+            AmbientStop1.Color = Color.FromArgb(palette.AmbientMidAlpha, palette.SecondaryAccent.R, palette.SecondaryAccent.G, palette.SecondaryAccent.B);
+            GlassSheenTopStop.Color = Color.FromArgb(palette.GlossySheenAlpha, 255, 255, 255);
+            GlassSheenMidStop.Color = Color.FromArgb((byte)(palette.GlossySheenAlpha / 4), 255, 255, 255);
+            EnergySweepStartStop.Color = Color.FromArgb(0, palette.PrimaryAccent.R, palette.PrimaryAccent.G, palette.PrimaryAccent.B);
+            EnergySweepMidStop.Color = Color.FromArgb(200, palette.PrimaryAccent.R, palette.PrimaryAccent.G, palette.PrimaryAccent.B);
+            EnergySweepMid2Stop.Color = Color.FromArgb(200, palette.SecondaryAccent.R, palette.SecondaryAccent.G, palette.SecondaryAccent.B);
+            EnergySweepEndStop.Color = Color.FromArgb(0, palette.SecondaryAccent.R, palette.SecondaryAccent.G, palette.SecondaryAccent.B);
+
+            DoomAmbientGlow.Visibility = s.Animation.GlowPulse ? Visibility.Visible : Visibility.Collapsed;
+            DoomEnergySweep.Visibility = s.Animation.EnergySweep ? Visibility.Visible : Visibility.Collapsed;
+            GlassSheenLayer.Visibility = s.Animation.ShowGlossySheen ? Visibility.Visible : Visibility.Collapsed;
+
+            var wantEnergy = !_isSessionLocked && (s.Animation.GlowPulse || s.Animation.EnergySweep);
+            if (wantEnergy)
+            {
+                if (_lastEnergyRunning != true || Math.Abs(_lastEnergyWidth - targetWidth) > 2.0)
+                {
+                    _animator.StartDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep, targetWidth, s.Animation.ReduceMotion);
+                    _lastEnergyRunning = true;
+                    _lastEnergyWidth = targetWidth;
+                }
+            }
+            else if (_lastEnergyRunning != false)
+            {
+                _animator.StopDoomEnergyAnimations(DoomAmbientGlow, DoomEnergySweep);
+                _lastEnergyRunning = false;
+            }
+
             PillShell.CornerRadius = s.General.StealthTopBar
                 ? new CornerRadius(0, 0, radius, radius)
                 : new CornerRadius(radius);
             PillShell.BorderThickness = s.General.StealthTopBar
                 ? new Thickness(1, 0, 1, 1)
                 : new Thickness(1);
-            PillShell.Background = (Brush)Application.Current.Resources["IslandSurfaceBrush"];
-            PillShell.BorderBrush = (Brush)Application.Current.Resources[
-                s.Appearance.Theme == ThemePreset.Contrast ? "IslandBorderContrastBrush" : "IslandBorderStrongBrush"];
+            PillShell.Background = new SolidColorBrush(palette.SurfaceColor);
+            PillShell.BorderBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Color.FromArgb(palette.BorderAlpha, palette.PrimaryAccent.R, palette.PrimaryAccent.G, palette.PrimaryAccent.B), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb((byte)(palette.BorderAlpha * 0.85), palette.SecondaryAccent.R, palette.SecondaryAccent.G, palette.SecondaryAccent.B), Offset = 1 }
+                }
+            };
         }
 
         CompactView.Height = s.Appearance.IslandHeight;
@@ -252,21 +377,36 @@ public sealed partial class DynamicIslandWindow : Window
             presenter.IsAlwaysOnTop = s.General.AlwaysOnTop;
         }
 
-        if (s.General.IslandEnabled)
+        if (_lastIslandShown != s.General.IslandEnabled)
         {
-            appWindow.Show(false);
-        }
-        else
-        {
-            appWindow.Hide();
+            _lastIslandShown = s.General.IslandEnabled;
+            if (s.General.IslandEnabled)
+            {
+                appWindow.Show(false);
+            }
+            else
+            {
+                appWindow.Hide();
+            }
         }
 
         var earAllowance = showEars ? 24 : 0;
         var hostWidth = (int)Math.Ceiling(targetWidth + earAllowance + 24);
         var hostHeight = (int)Math.Ceiling(targetHeight + (isStealthCompact ? 0 : 18));
-        _positioner.ApplyIslandPosition(s.Position, hostWidth, hostHeight, flushTopEdge: s.General.StealthTopBar);
+        if (_lastHostWidth != hostWidth || _lastHostHeight != hostHeight || _lastFlushTop != s.General.StealthTopBar)
+        {
+            _lastHostWidth = hostWidth;
+            _lastHostHeight = hostHeight;
+            _lastFlushTop = s.General.StealthTopBar;
+            _positioner.ApplyIslandPosition(s.Position, hostWidth, hostHeight, flushTopEdge: s.General.StealthTopBar);
+        }
 
-        _animator.SetIdleBreathing(IdleBreatheBar, s.Animation.IdleBreathing, s.Animation.ReduceMotion);
+        var wantIdleBreathe = isStealthCompact && !_isSessionLocked && s.Animation.IdleBreathing && !s.Animation.ReduceMotion;
+        if (_lastIdleBreathing != wantIdleBreathe)
+        {
+            _lastIdleBreathing = wantIdleBreathe;
+            _animator.SetIdleBreathing(IdleBreatheBar, wantIdleBreathe, s.Animation.ReduceMotion);
+        }
     }
 
     private void RepositionForActualShellSize()
@@ -305,8 +445,13 @@ public sealed partial class DynamicIslandWindow : Window
 
         if (_island.IsExpanded)
         {
+            NotchAssembly.UpdateLayout();
+            RepositionForActualShellSize();
             if (!_wasExpanded)
             {
+                _hoverOpenCommitUntilUtc = _openedByShortcut
+                    ? DateTime.MinValue
+                    : DateTime.UtcNow.AddMilliseconds(480);
                 _animator.AnimateVenomOpen(
                     NotchAssembly,
                     PanelContainer,
@@ -318,10 +463,28 @@ public sealed partial class DynamicIslandWindow : Window
             {
                 _animator.AnimateContentEntrance(PanelContainer, _settings.Settings.Animation, _settings.Settings.Appearance.AnimationSpeed);
             }
-            RestartAutoCollapseTimer();
+
+            if (_openedByShortcut)
+            {
+                _hoverTrackTimer.Stop();
+                _hoverCloseTimer.Stop();
+                _autoCollapseTimer.Stop();
+                InstallOutsideClickHook();
+            }
+            else
+            {
+                UninstallOutsideClickHook();
+                _hoverTrackTimer.Start();
+                RestartAutoCollapseTimer();
+            }
         }
         else
         {
+            _openedByShortcut = false;
+            _activeShortcutAction = null;
+            UninstallOutsideClickHook();
+            _hoverTrackTimer.Stop();
+            _hoverCloseTimer.Stop();
             _animator.RestoreShellImmediate(NotchAssembly);
             _autoCollapseTimer.Stop();
         }
@@ -410,17 +573,27 @@ public sealed partial class DynamicIslandWindow : Window
         _island.IsHovered = true;
         _hoverCloseTimer.Stop();
         _autoCollapseTimer.Stop();
+
+        var wasRetracting = _isRetracting;
         CancelPendingRetract();
 
         if (_island.IsExpanded)
         {
-            _animator.RestoreShellImmediate(NotchAssembly);
+            if (wasRetracting)
+            {
+                _animator.RestoreShellImmediate(NotchAssembly);
+            }
             return;
         }
 
         if (_settings.Settings.General.HoverToOpen)
         {
+            _openedByShortcut = false;
+            _activeShortcutAction = null;
+            UninstallOutsideClickHook();
+            _hoverOpenCommitUntilUtc = DateTime.UtcNow.AddMilliseconds(480);
             _island.SetMode(IslandMode.Expanded);
+            _hoverTrackTimer.Start();
         }
         else if (!_settings.Settings.General.StealthTopBar)
         {
@@ -428,30 +601,46 @@ public sealed partial class DynamicIslandWindow : Window
         }
     }
 
-    private async Task BeginSmoothCollapseAsync()
+    private async Task BeginSmoothCollapseAsync(bool force = false)
     {
-        if (!_island.IsExpanded)
+        if (!_island.IsExpanded || _isRetracting)
         {
             return;
         }
 
-        CancelPendingRetract();
-        _retractCts = new CancellationTokenSource();
-        var completed = await _animator.AnimateVenomRetractAsync(
-            NotchAssembly,
-            NotchAssembly.ActualWidth > 0 ? NotchAssembly.ActualWidth : PillShell.Width,
-            _settings.Settings.Animation,
-            _settings.Settings.Appearance.AnimationSpeed,
-            _retractCts.Token);
+        _openedByShortcut = false;
+        _activeShortcutAction = null;
+        UninstallOutsideClickHook();
+        _hoverTrackTimer.Stop();
+        _hoverCloseTimer.Stop();
+        _autoCollapseTimer.Stop();
 
-        if (completed && !_island.IsHovered)
+        CancelPendingRetract();
+        _isRetracting = true;
+        _retractCts = new CancellationTokenSource();
+        try
         {
-            _island.Collapse(_island.Music.HasActiveMedia, _settings.Settings.General.StealthTopBar);
+            var completed = await _animator.AnimateVenomRetractAsync(
+                NotchAssembly,
+                NotchAssembly.ActualWidth > 0 ? NotchAssembly.ActualWidth : PillShell.Width,
+                _settings.Settings.Animation,
+                _settings.Settings.Appearance.AnimationSpeed,
+                _retractCts.Token);
+
+            if (completed && (force || (!_island.IsHovered && !IsCursorInsideExpandedNotch())))
+            {
+                _island.Collapse(_island.Music.HasActiveMedia, _settings.Settings.General.StealthTopBar);
+            }
+        }
+        finally
+        {
+            _isRetracting = false;
         }
     }
 
     private void CancelPendingRetract()
     {
+        _isRetracting = false;
         if (_retractCts is not null)
         {
             _retractCts.Cancel();
@@ -462,22 +651,154 @@ public sealed partial class DynamicIslandWindow : Window
 
     private void OnPillPointerExited(object sender, PointerRoutedEventArgs e)
     {
-        _island.IsHovered = false;
-        _animator.AnimateHoverScale(NotchAssembly, false, _settings.Settings.Animation, _settings.Settings.Appearance.AnimationSpeed);
-
         if (_island.IsExpanded)
         {
-            if (_settings.Settings.General.CollapseBehavior == CollapseBehavior.MouseLeave || _settings.Settings.General.HoverToOpen)
+            if (DateTime.UtcNow >= _hoverOpenCommitUntilUtc && !IsCursorInsideExpandedNotch())
             {
-                _hoverCloseTimer.Stop();
-                _hoverCloseTimer.Start();
+                _island.IsHovered = false;
             }
-            else
-            {
-                RestartAutoCollapseTimer();
-            }
+            return;
+        }
+
+        _island.IsHovered = false;
+        if (!_settings.Settings.General.StealthTopBar)
+        {
+            _animator.AnimateHoverScale(NotchAssembly, false, _settings.Settings.Animation, _settings.Settings.Appearance.AnimationSpeed);
         }
     }
+
+    private void TrackExpandedHoverState()
+    {
+        if (!_island.IsExpanded || _openedByShortcut)
+        {
+            _hoverTrackTimer.Stop();
+            _hoverCloseTimer.Stop();
+            return;
+        }
+
+        if (DateTime.UtcNow < _hoverOpenCommitUntilUtc)
+        {
+            _island.IsHovered = true;
+            _hoverCloseTimer.Stop();
+            return;
+        }
+
+        if (IsCursorInsideExpandedNotch() || IsTextBoxFocused())
+        {
+            _island.IsHovered = true;
+            _hoverCloseTimer.Stop();
+            _autoCollapseTimer.Stop();
+            return;
+        }
+
+        _island.IsHovered = false;
+        if (_settings.Settings.General.CollapseBehavior == CollapseBehavior.MouseLeave || _settings.Settings.General.HoverToOpen)
+        {
+            if (!_hoverCloseTimer.IsEnabled && !_isRetracting)
+            {
+                _hoverCloseTimer.Start();
+            }
+        }
+        else
+        {
+            _hoverTrackTimer.Stop();
+            RestartAutoCollapseTimer();
+        }
+    }
+
+    private bool IsCursorInsideExpandedNotch() =>
+        Win32Interop.GetCursorPos(out var pt) && IsScreenPointInsideNotch(pt.X, pt.Y, marginPx: 18);
+
+    private bool IsScreenPointInsideNotch(int screenX, int screenY, int marginPx)
+    {
+        if (_hwnd == IntPtr.Zero || !Win32Interop.GetWindowRect(_hwnd, out var winRect))
+        {
+            return false;
+        }
+
+        var scale = Math.Max(96u, Win32Interop.GetDpiForWindow(_hwnd)) / 96.0;
+        var notchWidthPx = (NotchAssembly.ActualWidth > 0 ? NotchAssembly.ActualWidth : PillShell.Width) * scale;
+        var notchHeightPx = (NotchAssembly.ActualHeight > 0 ? NotchAssembly.ActualHeight : PillShell.ActualHeight) * scale;
+
+        var centerX = (winRect.Left + winRect.Right) / 2.0;
+        var left = centerX - (notchWidthPx / 2.0) - marginPx;
+        var right = centerX + (notchWidthPx / 2.0) + marginPx;
+        var top = winRect.Top;
+        var bottom = winRect.Top + Math.Max(40.0, notchHeightPx) + marginPx;
+
+        return screenX >= left && screenX <= right && screenY >= top && screenY <= bottom;
+    }
+
+    private void InstallOutsideClickHook()
+    {
+        if (_outsideMouseHook != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _outsideMouseHookProc ??= OutsideMouseHookCallback;
+        _outsideMouseHook = SetWindowsHookExW(WH_MOUSE_LL, _outsideMouseHookProc, IntPtr.Zero, 0);
+    }
+
+    private void UninstallOutsideClickHook()
+    {
+        if (_outsideMouseHook != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_outsideMouseHook);
+            _outsideMouseHook = IntPtr.Zero;
+        }
+    }
+
+    private IntPtr OutsideMouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        try
+        {
+            if (nCode >= 0 && _openedByShortcut && _island.IsExpanded)
+            {
+                var msg = wParam.ToInt32();
+                if (msg is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN)
+                {
+                    var hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                    if (!IsScreenPointInsideNotch(hookStruct.pt.X, hookStruct.pt.Y, marginPx: 4))
+                    {
+                        DispatcherQueue.TryEnqueue(() => _ = BeginSmoothCollapseAsync(force: true));
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Never interfere with system mouse input routing
+        }
+
+        return CallNextHookEx(_outsideMouseHook, nCode, wParam, lParam);
+    }
+
+    private const int WH_MOUSE_LL = 14;
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_RBUTTONDOWN = 0x0204;
+    private const int WM_MBUTTONDOWN = 0x0207;
+
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public Win32Interop.POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookExW(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
     private bool IsTextBoxFocused()
     {
@@ -492,41 +813,66 @@ public sealed partial class DynamicIslandWindow : Window
 
     private async void OnPillDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        switch (_settings.Settings.General.DoubleClickAction)
+        try
         {
-            case DoubleClickAction.ToggleLyrics:
-                _island.SetMode(_island.Mode == IslandMode.Lyrics ? IslandMode.Expanded : IslandMode.Lyrics);
-                break;
-            case DoubleClickAction.OpenFullscreenLyrics:
-                _island.Lyrics.IsFullscreenOpen = true;
-                break;
-            case DoubleClickAction.OpenDashboard:
-                OpenDashboardRequested?.Invoke(this, EventArgs.Empty);
-                break;
-            case DoubleClickAction.TogglePlay:
-                await _island.Music.TogglePlayPauseAsync();
-                break;
+            switch (_settings.Settings.General.DoubleClickAction)
+            {
+                case DoubleClickAction.ToggleLyrics:
+                    _island.SetMode(_island.Mode == IslandMode.Lyrics ? IslandMode.Expanded : IslandMode.Lyrics);
+                    break;
+                case DoubleClickAction.OpenFullscreenLyrics:
+                    _island.Lyrics.IsFullscreenOpen = true;
+                    break;
+                case DoubleClickAction.OpenDashboard:
+                    OpenDashboardRequested?.Invoke(this, EventArgs.Empty);
+                    break;
+                case DoubleClickAction.TogglePlay:
+                    await _island.Music.TogglePlayPauseAsync();
+                    break;
+            }
         }
+        catch { }
     }
 
     private async void OnCompactPlayPauseClick(object sender, RoutedEventArgs e)
     {
-        await _island.Music.TogglePlayPauseAsync();
+        try
+        {
+            await _island.Music.TogglePlayPauseAsync();
+        }
+        catch { }
     }
 
     private void OnTabClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is string tag && Enum.TryParse<IslandMode>(tag, out var mode))
         {
+            if (_openedByShortcut)
+            {
+                _activeShortcutAction = mode switch
+                {
+                    IslandMode.Expanded => ShortcutAction.OpenMusic,
+                    IslandMode.Lyrics => ShortcutAction.OpenLyrics,
+                    IslandMode.Clipboard => ShortcutAction.OpenClipboard,
+                    IslandMode.Timer => ShortcutAction.OpenTimer,
+                    _ => ShortcutAction.ToggleIsland
+                };
+            }
             _island.SetMode(mode);
         }
     }
 
     private async void OnCollapseClick(object sender, RoutedEventArgs e)
     {
-        _hoverCloseTimer.Stop();
-        _island.IsHovered = false;
-        await BeginSmoothCollapseAsync();
+        try
+        {
+            _hoverOpenCommitUntilUtc = DateTime.MinValue;
+            _hoverCloseTimer.Stop();
+            _hoverTrackTimer.Stop();
+            _island.IsHovered = false;
+            await BeginSmoothCollapseAsync(force: true);
+        }
+        catch { }
     }
 
     private void OnOpenSettingsClick(object sender, RoutedEventArgs e) =>

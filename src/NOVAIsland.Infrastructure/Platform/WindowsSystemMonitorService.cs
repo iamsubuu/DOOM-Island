@@ -10,11 +10,13 @@ namespace NOVAIsland.Infrastructure.Platform;
 
 public sealed class WindowsSystemMonitorService : ISystemMonitorService, IDisposable
 {
-    private readonly MMDeviceEnumerator _deviceEnumerator = new();
     private long _prevIdle;
     private long _prevKernel;
     private long _prevUser;
     private bool _hasPrevTimes;
+    private static bool? _wmiBrightnessSupported;
+    private static long _lastWmiCheckTicks;
+    private static int _cachedBrightness = 100;
 
     public Task<SystemMetrics> CaptureMetricsAsync(CancellationToken cancellationToken = default)
     {
@@ -57,7 +59,8 @@ public sealed class WindowsSystemMonitorService : ISystemMonitorService, IDispos
     {
         try
         {
-            using var dev = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            using var enumerator = new MMDeviceEnumerator();
+            using var dev = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             dev.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volumePercent, 0, 100) / 100f;
             dev.AudioEndpointVolume.Mute = muted;
         }
@@ -72,7 +75,8 @@ public sealed class WindowsSystemMonitorService : ISystemMonitorService, IDispos
     {
         try
         {
-            using var dev = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+            using var enumerator = new MMDeviceEnumerator();
+            using var dev = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
             dev.AudioEndpointVolume.Mute = muted;
         }
         catch
@@ -175,40 +179,40 @@ public sealed class WindowsSystemMonitorService : ISystemMonitorService, IDispos
 
         try
         {
-            using var defaultRender = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            using var enumerator = new MMDeviceEnumerator();
+            using var defaultRender = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             activeId = defaultRender.ID;
             vol = (int)Math.Round(defaultRender.AudioEndpointVolume.MasterVolumeLevelScalar * 100f);
             muted = defaultRender.AudioEndpointVolume.Mute;
-        }
-        catch { }
 
-        try
-        {
-            using var defaultCapture = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
-            micMuted = defaultCapture.AudioEndpointVolume.Mute;
-        }
-        catch { }
-
-        try
-        {
-            foreach (var dev in _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+            try
             {
-                var kind = dev.FriendlyName.Contains("Headphone", StringComparison.OrdinalIgnoreCase) ||
-                           dev.FriendlyName.Contains("AirPods", StringComparison.OrdinalIgnoreCase) ||
-                           dev.FriendlyName.Contains("Ear", StringComparison.OrdinalIgnoreCase)
-                    ? AudioDeviceKind.Headphones
-                    : dev.FriendlyName.Contains("USB", StringComparison.OrdinalIgnoreCase) ||
-                      dev.FriendlyName.Contains("Scarlett", StringComparison.OrdinalIgnoreCase) ||
-                      dev.FriendlyName.Contains("DAC", StringComparison.OrdinalIgnoreCase)
-                        ? AudioDeviceKind.Interface
-                        : AudioDeviceKind.Speakers;
+                using var defaultCapture = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                micMuted = defaultCapture.AudioEndpointVolume.Mute;
+            }
+            catch { }
 
-                using var client = dev.CreateAudioClient();
-                var rate = client?.MixFormat is { } fmt
-                    ? $"{fmt.SampleRate / 1000.0:0.#} kHz · {fmt.BitsPerSample}-bit"
-                    : "Active";
+            foreach (var dev in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+            {
+                using (dev)
+                {
+                    var kind = dev.FriendlyName.Contains("Headphone", StringComparison.OrdinalIgnoreCase) ||
+                               dev.FriendlyName.Contains("AirPods", StringComparison.OrdinalIgnoreCase) ||
+                               dev.FriendlyName.Contains("Ear", StringComparison.OrdinalIgnoreCase)
+                        ? AudioDeviceKind.Headphones
+                        : dev.FriendlyName.Contains("USB", StringComparison.OrdinalIgnoreCase) ||
+                          dev.FriendlyName.Contains("Scarlett", StringComparison.OrdinalIgnoreCase) ||
+                          dev.FriendlyName.Contains("DAC", StringComparison.OrdinalIgnoreCase)
+                            ? AudioDeviceKind.Interface
+                            : AudioDeviceKind.Speakers;
 
-                list.Add(new AudioDevice(dev.ID, dev.FriendlyName, kind, rate));
+                    using var client = dev.CreateAudioClient();
+                    var rate = client?.MixFormat is { } fmt
+                        ? $"{fmt.SampleRate / 1000.0:0.#} kHz · {fmt.BitsPerSample}-bit"
+                        : "Active";
+
+                    list.Add(new AudioDevice(dev.ID, dev.FriendlyName, kind, rate));
+                }
             }
         }
         catch { }
@@ -241,15 +245,34 @@ public sealed class WindowsSystemMonitorService : ISystemMonitorService, IDispos
 
     private static (bool Supported, int Level) ReadBrightness()
     {
+        if (_wmiBrightnessSupported == false)
+        {
+            return (false, 100);
+        }
+
+        var now = Environment.TickCount64;
+        if (_wmiBrightnessSupported == true && now - _lastWmiCheckTicks < 8000)
+        {
+            return (true, _cachedBrightness);
+        }
+
+        _lastWmiCheckTicks = now;
         try
         {
             using var searcher = new ManagementObjectSearcher("root\\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
             foreach (ManagementObject obj in searcher.Get())
             {
-                return (true, Convert.ToInt32(obj["CurrentBrightness"]));
+                _wmiBrightnessSupported = true;
+                _cachedBrightness = Convert.ToInt32(obj["CurrentBrightness"]);
+                return (true, _cachedBrightness);
             }
+
+            _wmiBrightnessSupported = false;
         }
-        catch { }
+        catch
+        {
+            _wmiBrightnessSupported = false;
+        }
 
         return (false, 100);
     }
@@ -372,5 +395,5 @@ public sealed class WindowsSystemMonitorService : ISystemMonitorService, IDispos
         [PreserveSig] int SetEndpointVisibility(string pszDeviceName, bool bVisible);
     }
 
-    public void Dispose() => _deviceEnumerator.Dispose();
+    public void Dispose() { }
 }

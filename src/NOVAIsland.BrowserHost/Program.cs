@@ -34,7 +34,10 @@ internal static class Program
         await using var stdout = Console.OpenStandardOutput();
         var stdoutLock = new SemaphoreSlim(1, 1);
 
-        var pipeName = PipeIdentityHelper.GetUserPipeName();
+        var pipeArg = args.FirstOrDefault(a => a.StartsWith("--pipe=", StringComparison.OrdinalIgnoreCase));
+        var pipeName = pipeArg is not null && pipeArg.Length > 7
+            ? pipeArg[7..]
+            : Environment.GetEnvironmentVariable("DOOMISLAND_PIPE") ?? PipeIdentityHelper.GetUserPipeName();
         NamedPipeClientStream? activePipe = null;
         var pipeWriteLock = new SemaphoreSlim(1, 1);
 

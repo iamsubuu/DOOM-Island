@@ -98,9 +98,12 @@ public static class SpringPhysicsConfigMapper
         var clampedSpeed = Math.Clamp(speedMultiplier, 0.5, 1.8);
         var (damping, basePeriodMs) = preset switch
         {
-            AnimationPreset.Snappy => (0.82f, 210.0),
+            AnimationPreset.Snappy => (0.82f, 200.0),
             AnimationPreset.Silk => (0.76f, 340.0),
-            _ => (0.78f, 265.0) // Fluid
+            AnimationPreset.VenomLiquid => (0.70f, 285.0),
+            AnimationPreset.GlossyBounce => (0.60f, 265.0),
+            AnimationPreset.ZeroGravity => (0.92f, 390.0),
+            _ => (0.78f, 255.0) // Fluid
         };
 
         return new SpringConfig(damping, TimeSpan.FromMilliseconds(basePeriodMs / clampedSpeed), Instant: false);

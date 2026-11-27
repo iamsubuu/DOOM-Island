@@ -16,7 +16,7 @@
             BorderThickness="0,0,0,1"
             Padding="16,0,140,0">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE713;" FontSize="14" Foreground="{StaticResource NovaAccentBrush}" />
+                <Image x:Name="TitleBarLogo" Width="18" Height="18" Stretch="Uniform" />
                 <TextBlock x:Name="TitleBarBrandText" Text="DOOM Island Settings" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource WindowTextPrimaryBrush}" />
                 <TextBlock Text="·" Foreground="{StaticResource WindowTextMutedBrush}" />
                 <TextBlock x:Name="TitleBarSectionText" Text="General" FontSize="12" Foreground="{StaticResource WindowTextSecondaryBrush}" />

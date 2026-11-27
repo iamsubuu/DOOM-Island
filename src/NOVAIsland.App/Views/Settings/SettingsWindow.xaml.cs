@@ -26,19 +26,19 @@ public sealed partial class SettingsWindow : Window
 
     private static readonly SectionMeta[] Sections =
     [
-        new(SettingsSectionId.General, "General", "Brand name, stealth top bar, hover open, startup, and collapse behavior", ["name", "stealth", "hover", "startup", "top", "collapse", "double"]),
+        new(SettingsSectionId.General, "General", "Stealth top bar, hover open, startup, and collapse behavior", ["stealth", "hover", "startup", "top", "collapse", "double"]),
         new(SettingsSectionId.Appearance, "Appearance", "Dark/Light/System theme, accent color, font, dimensions & live preview", ["theme", "accent", "font", "width", "height", "radius", "opacity", "black"]),
         new(SettingsSectionId.Animation, "Animation", "Composition spring presets, speed, hover scale, bounce & breathing", ["animation", "spring", "fluid", "snappy", "silk", "motion"]),
         new(SettingsSectionId.Music, "Music", "Album artwork, WASAPI equalizer, progress hairline & title scrolling", ["music", "equalizer", "artwork", "progress"]),
         new(SettingsSectionId.BrowserIntegration, "Browser Integration", "Automatic Chrome/Edge/Opera media + optional MV3 Extension", ["browser", "chrome", "edge", "opera", "extension", "native"]),
         new(SettingsSectionId.Lyrics, "Lyrics", "Synchronized LRCLIB lookup, scrolling & fullscreen backdrop", ["lyrics", "lrclib", "sync", "scroll", "fullscreen"]),
         new(SettingsSectionId.Clipboard, "Clipboard", "History retention, sensitive exclusions & excluded apps", ["clipboard", "history", "sensitive", "excluded"]),
-        new(SettingsSectionId.Notifications, "Notifications", "Windows notification access status, previews & Focus Assist sync", ["notifications", "alerts", "dnd", "focus"]),
+        new(SettingsSectionId.Notifications, "Notifications", "Windows system notification routing, previews & Focus Assist sync", ["notifications", "alerts", "dnd", "focus", "system"]),
         new(SettingsSectionId.Widgets, "Widgets", "Battery, volume, brightness, Wi-Fi, audio devices, CPU & RAM", ["widgets", "battery", "volume", "cpu", "ram"]),
         new(SettingsSectionId.Shortcuts, "Shortcuts", "Global Windows keyboard bindings", ["shortcuts", "hotkeys", "alt", "ctrl"]),
         new(SettingsSectionId.Privacy, "Privacy", "Local-only processing, private browsing pause & lock screen masking", ["privacy", "local", "lock", "logs"]),
         new(SettingsSectionId.Storage, "Storage", "Real SQLite & disk cache footprint, cleanup, JSON export & reset", ["storage", "cache", "sqlite", "export", "reset"]),
-        new(SettingsSectionId.About, "About", "Version, WinUI 3 + Chrome/Edge/Opera media & stack details", ["about", "version", "winui"])
+        new(SettingsSectionId.About, "About", "Version, publisher, WinUI 3 + Chrome/Edge/Opera media & stack details", ["about", "version", "publisher", "arcsubash", "winui"])
     ];
 
     private const double CompactLayoutThreshold = 760.0;
@@ -53,7 +53,9 @@ public sealed partial class SettingsWindow : Window
     private readonly StorageFootprintService _footprint;
     private readonly ILyricsCacheRepository _lyricsCache;
     private readonly IClipboardRepository _clipboardRepo;
+    private readonly Services.ThemeManager _themeManager;
     private readonly DispatcherTimer _saveDebounceTimer = new();
+    private Border? _appearancePreviewHost;
     private bool _syncingCompactNav;
     private bool _isCompactWidth;
 
@@ -66,7 +68,8 @@ public sealed partial class SettingsWindow : Window
         IWindowPositioningService positioner,
         StorageFootprintService footprint,
         ILyricsCacheRepository lyricsCache,
-        IClipboardRepository clipboardRepo)
+        IClipboardRepository clipboardRepo,
+        Services.ThemeManager themeManager)
     {
         InitializeComponent();
         _settingsVm = settingsVm;
@@ -78,6 +81,8 @@ public sealed partial class SettingsWindow : Window
         _footprint = footprint;
         _lyricsCache = lyricsCache;
         _clipboardRepo = clipboardRepo;
+        _themeManager = themeManager;
+        _themeManager.ArtworkPaletteUpdated += (_, _) => DispatcherQueue.TryEnqueue(RefreshAppearancePreview);
 
         _saveDebounceTimer.Interval = TimeSpan.FromMilliseconds(180);
         _saveDebounceTimer.Tick += async (_, _) =>
@@ -90,9 +95,21 @@ public sealed partial class SettingsWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
+        try
+        {
+            var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Images", "DOOMIsland-Logo.png");
+            if (File.Exists(logoPath))
+            {
+                TitleBarLogo.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(logoPath));
+            }
+        }
+        catch { }
+
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-        AppWindow.GetFromWindowId(windowId).Resize(new SizeInt32(1020, 680));
+        var appWindow = AppWindow.GetFromWindowId(windowId);
+        Services.WindowIconHelper.TryApply(hwnd, appWindow);
+        appWindow.Resize(new SizeInt32(1020, 680));
 
         foreach (var sec in Sections)
         {
@@ -202,14 +219,13 @@ public sealed partial class SettingsWindow : Window
         SectionSubtitleText.Text = meta.Subtitle;
 
         SectionContentHost.Children.Clear();
+        _appearancePreviewHost = null;
         var s = _settingsVm.Settings;
 
         switch (meta.Id)
         {
             case SettingsSectionId.General:
-                AddTextRow("Application display name", "Configurable brand name propagated across windows and tray.", s.General.AppName, v => s.General.AppName = v);
-                AddTextRow("Compact pill wordmark", "Short label shown when stealth mode is off.", s.General.AppShortName, v => s.General.AppShortName = v);
-                AddToggleRow("Stealth top-edge invisible bar", "Hide the idle island as an invisible bar along the top screen edge.", s.General.StealthTopBar, v =>
+                AddToggleRow("Stealth top-edge invisible bar", "Hide the idle island as a sleek glowing bar along the top screen edge.", s.General.StealthTopBar, v =>
                 {
                     s.General.StealthTopBar = v;
                     _islandVm.Collapse(_islandVm.Music.HasActiveMedia, v);
@@ -228,15 +244,16 @@ public sealed partial class SettingsWindow : Window
 
             case SettingsSectionId.Appearance:
                 AddAppearancePreview(s.Appearance);
+                AddInfoBanner("Themes include GlossyPink, Venom, SpiderMan, DrDoom, CyberViolet, and ArtworkDynamic (auto-colors the island from live media cover art).");
                 AddButtonRow("Reset Appearance", "Restore default colors, typography, and pill dimensions.", "Reset", async () => { await _settingsVm.ResetAppearanceAsync(); RenderActiveSection(); });
-                AddEnumRow("Application theme", Enum.GetValues<ColorMode>(), s.Appearance.ColorMode, v => s.Appearance.ColorMode = v);
-                AddEnumRow("Island material preset", Enum.GetValues<ThemePreset>(), s.Appearance.Theme, v => s.Appearance.Theme = v);
+                AddEnumRow("Application theme", Enum.GetValues<ColorMode>(), s.Appearance.ColorMode, v => { s.Appearance.ColorMode = v; RefreshAppearancePreview(); });
+                AddEnumRow("Island material & theme", Enum.GetValues<ThemePreset>(), s.Appearance.Theme, v => { s.Appearance.Theme = v; RefreshAppearancePreview(); });
                 AddAccentSwatches(s.Appearance);
                 AddEnumRow("Font family", Enum.GetValues<FontFamilyOption>(), s.Appearance.FontFamily, v => s.Appearance.FontFamily = v);
-                AddSliderRow("Compact island width (px)", 140, 300, s.Appearance.IslandWidth, v => s.Appearance.IslandWidth = v);
-                AddSliderRow("Compact island height (px)", 32, 48, s.Appearance.IslandHeight, v => s.Appearance.IslandHeight = v);
-                AddSliderRow("Corner radius (px)", 14, 32, s.Appearance.CornerRadius, v => s.Appearance.CornerRadius = v);
-                AddSliderRow("Surface opacity (%)", 80, 100, s.Appearance.Opacity, v => s.Appearance.Opacity = v);
+                AddSliderRow("Compact island width (px)", 140, 300, s.Appearance.IslandWidth, v => { s.Appearance.IslandWidth = v; RefreshAppearancePreview(); });
+                AddSliderRow("Compact island height (px)", 32, 48, s.Appearance.IslandHeight, v => { s.Appearance.IslandHeight = v; RefreshAppearancePreview(); });
+                AddSliderRow("Corner radius (px)", 14, 32, s.Appearance.CornerRadius, v => { s.Appearance.CornerRadius = v; RefreshAppearancePreview(); });
+                AddSliderRow("Surface opacity (%)", 75, 100, s.Appearance.Opacity, v => { s.Appearance.Opacity = v; RefreshAppearancePreview(); });
                 AddSliderRow("Animation speed (x10)", 5, 18, s.Appearance.AnimationSpeed * 10, v => s.Appearance.AnimationSpeed = Math.Round(v / 10.0, 1));
                 break;
 
@@ -247,6 +264,9 @@ public sealed partial class SettingsWindow : Window
                 AddToggleRow("Hover scale", "Subtly scale compact pill on hover.", s.Animation.HoverExpand, v => s.Animation.HoverExpand = v);
                 AddToggleRow("Notification arrival bounce", "Spring settle pulse when new notifications arrive.", s.Animation.NotificationBounce, v => s.Animation.NotificationBounce = v);
                 AddToggleRow("Idle ambient breathing", "Display subtle breathing bar while idle.", s.Animation.IdleBreathing, v => s.Animation.IdleBreathing = v);
+                AddToggleRow("Ambient aura glow & pulse", "Animate the dynamic ambient glow inside the island shell.", s.Animation.GlowPulse, v => s.Animation.GlowPulse = v);
+                AddToggleRow("Bottom energy sweep beam", "Animate the theme-colored rim light sweep across the notch bottom.", s.Animation.EnergySweep, v => s.Animation.EnergySweep = v);
+                AddToggleRow("Glossy top glass sheen", "Render specular top glass reflection across the notch.", s.Animation.ShowGlossySheen, v => s.Animation.ShowGlossySheen = v);
                 break;
 
             case SettingsSectionId.Music:
@@ -339,7 +359,7 @@ public sealed partial class SettingsWindow : Window
                 break;
 
             case SettingsSectionId.About:
-                AddInfoBanner($"{_settingsVm.ResolvedAppName} v{AppConstants.AppVersion} · Native WinUI 3 (.NET 10 / Windows App SDK 2.7) · Chrome/Edge/Opera Auto Media + MV3 Extension + LRCLIB + SQLite.");
+                AddAboutCard();
                 break;
         }
     }
@@ -516,7 +536,7 @@ public sealed partial class SettingsWindow : Window
 
     private void AddAccentSwatches(AppearanceSettings app)
     {
-        string[] hexes = ["#2ee58b", "#10b981", "#34d399", "#7aa2f7", "#38bdf8", "#a78bfa", "#f59e0b"];
+        string[] hexes = ["#2ee58b", "#a855f7", "#22d3ee", "#ff4da6", "#ef4444", "#3b82f6", "#f59e0b"];
         var panel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -546,36 +566,342 @@ public sealed partial class SettingsWindow : Window
 
     private void AddAppearancePreview(AppearanceSettings app)
     {
-        var pill = new Border
+        _appearancePreviewHost = new Border
         {
-            Width = app.IslandWidth,
-            Height = app.IslandHeight,
-            CornerRadius = new CornerRadius(app.CornerRadius),
-            Background = new SolidColorBrush(Colors.Black),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(14, 0, 14, 0),
-            Child = new Grid
+            Height = 128,
+            CornerRadius = new CornerRadius(12),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            BorderThickness = new Thickness(1)
+        };
+        SectionContentHost.Children.Add(_appearancePreviewHost);
+        RefreshAppearancePreview();
+    }
+
+    private void RefreshAppearancePreview()
+    {
+        if (_appearancePreviewHost is null || _settingsVm.ActiveSection != SettingsSectionId.Appearance)
+        {
+            return;
+        }
+
+        var app = _settingsVm.Settings.Appearance;
+        var palette = _themeManager.ResolveIslandPalette(app);
+        var previewRadius = Math.Clamp(app.CornerRadius, 14, 32);
+        var stealthFlush = _settingsVm.Settings.General.StealthTopBar;
+        var surfaceColor = palette.SurfaceColor;
+        var primary = palette.PrimaryAccent;
+        var secondary = palette.SecondaryAccent;
+
+        var notchBody = new Grid
+        {
+            Width = Math.Clamp(app.IslandWidth + 68, 250, 360),
+            Height = Math.Clamp(app.IslandHeight + 20, 54, 74)
+        };
+
+        // Top ambient dual gradient + glossy sheen + bottom energy sweep matching live DynamicIslandWindow
+        notchBody.Children.Add(new Border
+        {
+            CornerRadius = stealthFlush ? new CornerRadius(0, 0, previewRadius, previewRadius) : new CornerRadius(previewRadius),
+            Background = new LinearGradientBrush
             {
-                Children =
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 1),
+                GradientStops =
                 {
-                    new TextBlock { Text = _settingsVm.ResolvedShortName, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center, FontSize = 12 },
-                    new TextBlock { Text = "Ready", Foreground = new SolidColorBrush(Color.FromArgb(255, 161, 161, 170)), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, FontSize = 11 }
+                    new GradientStop { Color = Color.FromArgb(palette.AmbientTopAlpha, primary.R, primary.G, primary.B), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb(palette.AmbientMidAlpha, secondary.R, secondary.G, secondary.B), Offset = 0.52 },
+                    new GradientStop { Color = Color.FromArgb(0, 0, 0, 0), Offset = 1 }
                 }
             }
+        });
+
+        notchBody.Children.Add(new Border
+        {
+            CornerRadius = stealthFlush ? new CornerRadius(0, 0, previewRadius, previewRadius) : new CornerRadius(previewRadius),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Color.FromArgb(palette.GlossySheenAlpha, 255, 255, 255), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb((byte)(palette.GlossySheenAlpha / 4), 255, 255, 255), Offset = 0.28 },
+                    new GradientStop { Color = Color.FromArgb(0, 255, 255, 255), Offset = 1 }
+                }
+            }
+        });
+
+        var inner = new Grid { Padding = new Thickness(16, 8, 16, 10) };
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var statusStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        statusStack.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            Fill = new SolidColorBrush(primary)
+        });
+        statusStack.Children.Add(new Border
+        {
+            Width = 24,
+            Height = 3,
+            CornerRadius = new CornerRadius(2),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 0),
+                GradientStops =
+                {
+                    new GradientStop { Color = primary, Offset = 0 },
+                    new GradientStop { Color = secondary, Offset = 1 }
+                }
+            }
+        });
+        Grid.SetColumn(statusStack, 0);
+        inner.Children.Add(statusStack);
+
+        var centerTitle = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0) };
+        centerTitle.Children.Add(new TextBlock
+        {
+            Text = $"{app.Theme} · Notch Preview",
+            FontSize = 11.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Colors.White),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        centerTitle.Children.Add(new TextBlock
+        {
+            Text = $"{app.Opacity:0}% · R{app.CornerRadius:0} · {app.IslandWidth:0}×{app.IslandHeight:0}",
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.FromArgb(200, 210, 220, 230))
+        });
+        Grid.SetColumn(centerTitle, 1);
+        inner.Children.Add(centerTitle);
+
+        var barsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        var barIdx = 0;
+        foreach (var h in new[] { 7.0, 13.0, 10.0, 15.0, 8.0 })
+        {
+            barsPanel.Children.Add(new Border
+            {
+                Width = 3,
+                Height = h,
+                CornerRadius = new CornerRadius(1.5),
+                Background = new SolidColorBrush(barIdx % 2 == 0 ? primary : secondary)
+            });
+            barIdx++;
+        }
+        Grid.SetColumn(barsPanel, 2);
+        inner.Children.Add(barsPanel);
+
+        notchBody.Children.Add(inner);
+        notchBody.Children.Add(new Border
+        {
+            Width = 136,
+            Height = 2,
+            CornerRadius = new CornerRadius(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 2),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 0),
+                GradientStops =
+                {
+                    new GradientStop { Color = Color.FromArgb(0, primary.R, primary.G, primary.B), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb(220, primary.R, primary.G, primary.B), Offset = 0.35 },
+                    new GradientStop { Color = Color.FromArgb(220, secondary.R, secondary.G, secondary.B), Offset = 0.65 },
+                    new GradientStop { Color = Color.FromArgb(0, secondary.R, secondary.G, secondary.B), Offset = 1 }
+                }
+            }
+        });
+
+        var shell = new Border
+        {
+            CornerRadius = stealthFlush ? new CornerRadius(0, 0, previewRadius, previewRadius) : new CornerRadius(previewRadius),
+            Background = new SolidColorBrush(surfaceColor),
+            BorderBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Color.FromArgb(palette.BorderAlpha, primary.R, primary.G, primary.B), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb(palette.BorderAlpha, secondary.R, secondary.G, secondary.B), Offset = 1 }
+                }
+            },
+            BorderThickness = stealthFlush ? new Thickness(1, 0, 1, 1) : new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = stealthFlush ? VerticalAlignment.Top : VerticalAlignment.Center,
+            Child = notchBody
         };
+
+        var assembly = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = stealthFlush ? VerticalAlignment.Top : VerticalAlignment.Center
+        };
+
+        if (stealthFlush)
+        {
+            assembly.Children.Add(CreateNotchEarPath(isLeft: true, surfaceColor));
+        }
+        assembly.Children.Add(shell);
+        if (stealthFlush)
+        {
+            assembly.Children.Add(CreateNotchEarPath(isLeft: false, surfaceColor));
+        }
+
+        _appearancePreviewHost.Padding = stealthFlush ? new Thickness(0, 0, 0, 12) : new Thickness(0);
+        _appearancePreviewHost.BorderBrush = new SolidColorBrush(Color.FromArgb(85, primary.R, primary.G, primary.B));
+        _appearancePreviewHost.Background = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 1),
+            GradientStops =
+            {
+                new GradientStop { Color = Color.FromArgb(255, (byte)(primary.R / 20 + 6), (byte)(primary.G / 20 + 8), (byte)(primary.B / 20 + 12)), Offset = 0 },
+                new GradientStop { Color = Color.FromArgb(255, (byte)(secondary.R / 18 + 8), (byte)(secondary.G / 18 + 10), (byte)(secondary.B / 18 + 14)), Offset = 1 }
+            }
+        };
+        _appearancePreviewHost.Child = assembly;
+    }
+
+    private static Microsoft.UI.Xaml.Shapes.Path CreateNotchEarPath(bool isLeft, Color fillColor)
+    {
+        var figure = isLeft
+            ? new PathFigure
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                IsClosed = true,
+                Segments =
+                {
+                    new LineSegment { Point = new Windows.Foundation.Point(12, 0) },
+                    new LineSegment { Point = new Windows.Foundation.Point(12, 12) },
+                    new ArcSegment
+                    {
+                        Point = new Windows.Foundation.Point(0, 0),
+                        Size = new Windows.Foundation.Size(12, 12),
+                        SweepDirection = SweepDirection.Counterclockwise
+                    }
+                }
+            }
+            : new PathFigure
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                IsClosed = true,
+                Segments =
+                {
+                    new LineSegment { Point = new Windows.Foundation.Point(12, 0) },
+                    new ArcSegment
+                    {
+                        Point = new Windows.Foundation.Point(0, 12),
+                        Size = new Windows.Foundation.Size(12, 12),
+                        SweepDirection = SweepDirection.Counterclockwise
+                    }
+                }
+            };
+
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        return new Microsoft.UI.Xaml.Shapes.Path
+        {
+            Width = 12,
+            Height = 12,
+            VerticalAlignment = VerticalAlignment.Top,
+            Fill = new SolidColorBrush(fillColor),
+            Data = geometry
+        };
+    }
+
+    private void AddAboutCard()
+    {
+        var stack = new StackPanel { Spacing = 10 };
+
+        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        try
+        {
+            var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Images", "DOOMIsland-Logo.png");
+            if (File.Exists(logoPath))
+            {
+                headerRow.Children.Add(new Image
+                {
+                    Width = 44,
+                    Height = 44,
+                    Stretch = Stretch.Uniform,
+                    Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(logoPath))
+                });
+            }
+        }
+        catch { }
+
+        var titleCol = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        titleCol.Children.Add(new TextBlock
+        {
+            Text = $"{AppConstants.DefaultAppName} · v{AppConstants.AppVersion}",
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"]
+        });
+        titleCol.Children.Add(new TextBlock
+        {
+            Text = $"Publisher: {AppConstants.PublisherName}",
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            Foreground = (Brush)Application.Current.Resources["NovaAccentBrush"]
+        });
+        headerRow.Children.Add(titleCol);
+        stack.Children.Add(headerRow);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Native WinUI 3 (.NET 10 / Windows App SDK 2.7) Dynamic Island with Chrome/Edge/Opera Media Session sync, Windows System Action Center notifications, LRCLIB synced lyrics, clipboard vault, and local SQLite persistence.",
+            FontSize = 12.5,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"]
+        });
+
+        var linksPanel = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 0) };
+        linksPanel.Children.Add(new TextBlock
+        {
+            Text = "Developer Profiles & Contact",
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"]
+        });
+        linksPanel.Children.Add(new HyperlinkButton
+        {
+            Content = "1. github.com/iamsubuu",
+            NavigateUri = new Uri("https://github.com/iamsubuu"),
+            Padding = new Thickness(0, 2, 0, 2)
+        });
+        linksPanel.Children.Add(new HyperlinkButton
+        {
+            Content = "2. github.com/ArcSubash",
+            NavigateUri = new Uri("https://github.com/ArcSubash"),
+            Padding = new Thickness(0, 2, 0, 2)
+        });
+        linksPanel.Children.Add(new HyperlinkButton
+        {
+            Content = "Contact dev : lynchkiller0337@gmail.com",
+            NavigateUri = new Uri("mailto:lynchkiller0337@gmail.com"),
+            Padding = new Thickness(0, 2, 0, 2)
+        });
+        stack.Children.Add(linksPanel);
 
         SectionContentHost.Children.Add(new Border
         {
-            Height = 96,
-            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(16, 14, 16, 14),
+            CornerRadius = new CornerRadius(10),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = (Brush)Application.Current.Resources["WindowCardBrush"],
             BorderBrush = (Brush)Application.Current.Resources["WindowBorderBrush"],
             BorderThickness = new Thickness(1),
-            Child = pill
+            Child = stack
         });
     }
 

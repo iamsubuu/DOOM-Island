@@ -32,7 +32,19 @@ public sealed class StartupRegistrationService : IStartupService
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
-            return key?.GetValue(ValueName) is string val && !string.IsNullOrWhiteSpace(val);
+            if (key?.GetValue(ValueName) is not string val || string.IsNullOrWhiteSpace(val))
+            {
+                return false;
+            }
+
+            var exePath = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                var expected = $"\"{exePath}\" --minimized";
+                return string.Equals(val.Trim(), expected, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return val.Contains("--minimized", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {

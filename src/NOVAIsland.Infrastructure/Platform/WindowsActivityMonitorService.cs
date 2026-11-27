@@ -132,67 +132,79 @@ public sealed class WindowsActivityMonitorService : IActivityMonitorService, IDi
 
     private void OnScreenshotCreated(object sender, FileSystemEventArgs e)
     {
-        var info = new FileInfo(e.FullPath);
-        var kb = info.Exists ? Math.Max(1, info.Length / 1024) : 0;
-        UpsertItem(new ActivityItem(
-            Id: $"act-fs-{Path.GetFileName(e.FullPath)}",
-            Type: ActivityType.Screenshot,
-            Title: "Screenshot saved",
-            Subtitle: Path.GetFileName(e.FullPath),
-            Progress: 100,
-            SpeedText: null,
-            SizeText: $"{kb} KB",
-            Status: ActivityStatus.Completed,
-            FilePath: e.FullPath,
-            TimestampUtc: DateTimeOffset.UtcNow));
+        try
+        {
+            var info = new FileInfo(e.FullPath);
+            var kb = info.Exists ? Math.Max(1, info.Length / 1024) : 0;
+            UpsertItem(new ActivityItem(
+                Id: $"act-fs-{Path.GetFileName(e.FullPath)}",
+                Type: ActivityType.Screenshot,
+                Title: "Screenshot saved",
+                Subtitle: Path.GetFileName(e.FullPath),
+                Progress: 100,
+                SpeedText: null,
+                SizeText: $"{kb} KB",
+                Status: ActivityStatus.Completed,
+                FilePath: e.FullPath,
+                TimestampUtc: DateTimeOffset.UtcNow));
+        }
+        catch { }
     }
 
     private void OnDownloadChanged(object sender, FileSystemEventArgs e)
     {
-        var ext = Path.GetExtension(e.FullPath);
-        if (!ext.Equals(".crdownload", StringComparison.OrdinalIgnoreCase) &&
-            !ext.Equals(".part", StringComparison.OrdinalIgnoreCase) &&
-            !ext.Equals(".tmp", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            return;
+            var ext = Path.GetExtension(e.FullPath);
+            if (!ext.Equals(".crdownload", StringComparison.OrdinalIgnoreCase) &&
+                !ext.Equals(".part", StringComparison.OrdinalIgnoreCase) &&
+                !ext.Equals(".tmp", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var len = File.Exists(e.FullPath) ? new FileInfo(e.FullPath).Length : 0;
+            var mb = len / (1024.0 * 1024.0);
+            var displayName = Path.GetFileNameWithoutExtension(e.FullPath);
+
+            UpsertItem(new ActivityItem(
+                Id: $"dl-{displayName}",
+                Type: ActivityType.Download,
+                Title: displayName,
+                Subtitle: "Browser Download · Downloads folder",
+                Progress: 50, // Total expected size not exposed by filesystem partial files alone
+                SpeedText: "Downloading",
+                SizeText: $"{mb:0.1} MB received",
+                Status: ActivityStatus.Active,
+                FilePath: e.FullPath,
+                TimestampUtc: DateTimeOffset.UtcNow));
         }
-
-        var len = File.Exists(e.FullPath) ? new FileInfo(e.FullPath).Length : 0;
-        var mb = len / (1024.0 * 1024.0);
-        var displayName = Path.GetFileNameWithoutExtension(e.FullPath);
-
-        UpsertItem(new ActivityItem(
-            Id: $"dl-{displayName}",
-            Type: ActivityType.Download,
-            Title: displayName,
-            Subtitle: "Browser Download · Downloads folder",
-            Progress: 50, // Total expected size not exposed by filesystem partial files alone
-            SpeedText: "Downloading",
-            SizeText: $"{mb:0.1} MB received",
-            Status: ActivityStatus.Active,
-            FilePath: e.FullPath,
-            TimestampUtc: DateTimeOffset.UtcNow));
+        catch { }
     }
 
     private void OnDownloadRenamed(object sender, RenamedEventArgs e)
     {
-        var oldBase = Path.GetFileNameWithoutExtension(e.OldFullPath);
-        var id = $"dl-{oldBase}";
-        var existing = _items.FirstOrDefault(x => x.Id == id);
-        if (existing is null) return;
-
-        var len = File.Exists(e.FullPath) ? new FileInfo(e.FullPath).Length : 0;
-        var mb = len / (1024.0 * 1024.0);
-        UpsertItem(existing with
+        try
         {
-            Title = Path.GetFileName(e.FullPath),
-            Progress = 100,
-            SpeedText = "Completed",
-            SizeText = $"{mb:0.1} MB",
-            Status = ActivityStatus.Completed,
-            FilePath = e.FullPath,
-            TimestampUtc = DateTimeOffset.UtcNow
-        });
+            var oldBase = Path.GetFileNameWithoutExtension(e.OldFullPath);
+            var id = $"dl-{oldBase}";
+            var existing = _items.FirstOrDefault(x => x.Id == id);
+            if (existing is null) return;
+
+            var len = File.Exists(e.FullPath) ? new FileInfo(e.FullPath).Length : 0;
+            var mb = len / (1024.0 * 1024.0);
+            UpsertItem(existing with
+            {
+                Title = Path.GetFileName(e.FullPath),
+                Progress = 100,
+                SpeedText = "Completed",
+                SizeText = $"{mb:0.1} MB",
+                Status = ActivityStatus.Completed,
+                FilePath = e.FullPath,
+                TimestampUtc = DateTimeOffset.UtcNow
+            });
+        }
+        catch { }
     }
 
     private void UpsertItem(ActivityItem item)

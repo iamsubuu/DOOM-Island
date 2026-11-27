@@ -37,19 +37,19 @@ public sealed class CompositionSpringAnimator
             return;
         }
 
-        shellVisual.Scale = new Vector3(0.36f, 0.08f, 1f);
-        shellVisual.Opacity = 0.25f;
+        shellVisual.Scale = new Vector3(0.58f, 0.14f, 1f);
+        shellVisual.Opacity = 0.45f;
 
         var scaleSpring = compositor.CreateSpringVector3Animation();
         scaleSpring.FinalValue = Vector3.One;
-        scaleSpring.DampingRatio = Math.Clamp(cfg.DampingRatio, 0.68f, 0.88f);
-        scaleSpring.Period = TimeSpan.FromMilliseconds(Math.Clamp(240 / Math.Max(0.5, speed), 140, 320));
+        scaleSpring.DampingRatio = Math.Clamp(cfg.DampingRatio, 0.80f, 0.92f);
+        scaleSpring.Period = TimeSpan.FromMilliseconds(Math.Clamp(220 / Math.Max(0.5, speed), 130, 290));
         shellVisual.StartAnimation(nameof(Visual.Scale), scaleSpring);
 
         var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(0f, 0.25f);
+        fade.InsertKeyFrame(0f, 0.45f);
         fade.InsertKeyFrame(1f, 1f, compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.9f), new Vector2(0.3f, 1f)));
-        fade.Duration = TimeSpan.FromMilliseconds(Math.Max(110, 180 / Math.Max(0.5, speed)));
+        fade.Duration = TimeSpan.FromMilliseconds(Math.Max(100, 160 / Math.Max(0.5, speed)));
         shellVisual.StartAnimation(nameof(Visual.Opacity), fade);
 
         AnimateContentEntrance(content, animSettings, speed);

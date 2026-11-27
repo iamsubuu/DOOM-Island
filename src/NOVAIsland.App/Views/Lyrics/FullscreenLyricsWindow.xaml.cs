@@ -36,6 +36,7 @@ public sealed partial class FullscreenLyricsWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
+        Services.WindowIconHelper.TryApply(hwnd, appWindow);
         appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
 
         _lyrics.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>

@@ -17,6 +17,7 @@ public sealed partial class DashboardWindow : Window
     private readonly IslandViewModel _island;
     private readonly SettingsViewModel _settings;
     private bool _updatingUi;
+    private bool _isWindowVisible = true;
     private string? _lastArtworkUri;
 
     public event EventHandler<SettingsSectionId>? OpenSettingsSectionRequested;
@@ -31,34 +32,63 @@ public sealed partial class DashboardWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
+        try
+        {
+            var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Images", "DOOMIsland-Logo.png");
+            if (File.Exists(logoPath))
+            {
+                TitleBarLogo.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(logoPath));
+            }
+        }
+        catch { }
+
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
+        Services.WindowIconHelper.TryApply(hwnd, appWindow);
         appWindow.Resize(new SizeInt32(1140, 760));
+        appWindow.Changed += (sender, args) =>
+        {
+            if (args.DidVisibilityChange)
+            {
+                _isWindowVisible = sender.IsVisible;
+                if (_isWindowVisible)
+                {
+                    DispatcherQueue.TryEnqueue(Refresh);
+                }
+            }
+        };
 
         SizeChanged += OnWindowSizeChanged;
         UpdateResponsiveLayout(Bounds.Width);
 
-        _island.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(HighlightActiveStateButton);
-        _island.Music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        _island.PropertyChanged += (_, _) =>
         {
-            if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+            if (_isWindowVisible) DispatcherQueue.TryEnqueue(HighlightActiveStateButton);
+        };
+        _island.Music.PropertyChanged += (_, e) =>
+        {
+            if (!_isWindowVisible) return;
+            DispatcherQueue.TryEnqueue(() =>
             {
-                DashProgress.Value = _island.Music.ProgressPercentage;
-                DashElapsed.Text = _island.Music.FormattedPosition;
-                DashDuration.Text = _island.Music.FormattedDuration;
-            }
-            else
-            {
-                Refresh();
-            }
-        });
-        _island.Timer.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
-        _island.System.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
-        _island.Clipboard.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
-        _island.Notifications.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
-        _island.Activity.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
-        _settings.SettingsChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
+                if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+                {
+                    DashProgress.Value = _island.Music.ProgressPercentage;
+                    DashElapsed.Text = _island.Music.FormattedPosition;
+                    DashDuration.Text = _island.Music.FormattedDuration;
+                }
+                else
+                {
+                    Refresh();
+                }
+            });
+        };
+        _island.Timer.PropertyChanged += (_, _) => { if (_isWindowVisible) DispatcherQueue.TryEnqueue(Refresh); };
+        _island.System.PropertyChanged += (_, _) => { if (_isWindowVisible) DispatcherQueue.TryEnqueue(Refresh); };
+        _island.Clipboard.PropertyChanged += (_, _) => { if (_isWindowVisible) DispatcherQueue.TryEnqueue(Refresh); };
+        _island.Notifications.PropertyChanged += (_, _) => { if (_isWindowVisible) DispatcherQueue.TryEnqueue(Refresh); };
+        _island.Activity.PropertyChanged += (_, _) => { if (_isWindowVisible) DispatcherQueue.TryEnqueue(Refresh); };
+        _settings.SettingsChanged += (_, _) => { if (_isWindowVisible) DispatcherQueue.TryEnqueue(Refresh); };
 
         Refresh();
     }

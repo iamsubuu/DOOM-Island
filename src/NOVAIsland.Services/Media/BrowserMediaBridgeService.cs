@@ -25,9 +25,19 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
     private readonly ConcurrentDictionary<string, TaskCompletionSource<CommandResultInfo>> _pendingCommands = new();
     private readonly List<NamedPipeServerStream> _connectedClients = [];
     private readonly Lock _clientsLock = new();
+    private readonly string _pipeName;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
     private int? _preferredTabId;
+
+    public BrowserMediaBridgeService() : this(null)
+    {
+    }
+
+    public BrowserMediaBridgeService(string? customPipeName)
+    {
+        _pipeName = string.IsNullOrWhiteSpace(customPipeName) ? GetCurrentUserPipeName() : customPipeName;
+    }
 
     public bool IsConnected { get; private set; }
     public string? ConnectedBrowserName { get; private set; }
@@ -272,7 +282,7 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
 
     private async Task AcceptClientsAsync(CancellationToken ct)
     {
-        var pipeName = GetCurrentUserPipeName();
+        var pipeName = _pipeName;
         while (!ct.IsCancellationRequested)
         {
             NamedPipeServerStream? server = null;

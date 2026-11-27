@@ -41,7 +41,7 @@ internal static class Program
                 InstallDir: installDir,
                 RegisterBrowsers: true,
                 CreateDesktopShortcut: false,
-                LaunchOnStartup: false,
+                LaunchOnStartup: true,
                 LaunchAfterInstall: !noLaunch,
                 Silent: true);
             InstallerEngine.Install(opts, _ => { }, (_, _) => { });
@@ -57,7 +57,20 @@ internal static class Program
 internal static class InstallerEngine
 {
     private const string AppName = "DOOM Island";
-    private const string AppVersion = "2.3.1";
+    internal const string PublisherName = "ArcSubash";
+    internal static readonly string AppVersion = ResolveAppVersion();
+
+    private static string ResolveAppVersion()
+    {
+        var asm = Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(info))
+        {
+            return info.Split('+')[0];
+        }
+
+        return asm.GetName().Version?.ToString(3) ?? "2.4.5";
+    }
     private const string NativeHostName = "com.doomisland.host";
     private const string DefaultExtensionId = "amplhmapoeandecddkchambamhafdcgp";
 
@@ -112,6 +125,9 @@ internal static class InstallerEngine
 
         onStatus("Registering uninstaller...");
         RegisterAddRemovePrograms(installDir, appExe);
+
+        // Flush Windows shell/taskbar icon cache so updated DOOMIsland.ico shows immediately on taskbar & Start Menu
+        try { SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0x0000, IntPtr.Zero, IntPtr.Zero); } catch { }
 
         if (options.LaunchAfterInstall && File.Exists(appExe))
         {
@@ -227,7 +243,7 @@ internal static class InstallerEngine
         if (key is null) return;
         key.SetValue("DisplayName", AppName);
         key.SetValue("DisplayVersion", AppVersion);
-        key.SetValue("Publisher", AppName);
+        key.SetValue("Publisher", PublisherName);
         key.SetValue("InstallLocation", installDir);
         key.SetValue("DisplayIcon", appExe);
         key.SetValue("UninstallString", $"\"{cmdPath}\"");
@@ -248,6 +264,11 @@ internal static class InstallerEngine
             shortcut.TargetPath = targetPath;
             shortcut.WorkingDirectory = workingDir;
             shortcut.Description = description;
+            var icoPath = Path.Combine(workingDir, "Assets", "DOOMIsland.ico");
+            if (File.Exists(icoPath))
+            {
+                shortcut.IconLocation = $"{icoPath},0";
+            }
             shortcut.Save();
             Marshal.FinalReleaseComObject(shortcut);
         }
@@ -256,4 +277,7 @@ internal static class InstallerEngine
             Marshal.FinalReleaseComObject(shell);
         }
     }
+
+    [DllImport("shell32.dll")]
+    private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 }

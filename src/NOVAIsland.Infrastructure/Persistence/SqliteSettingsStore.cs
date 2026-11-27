@@ -127,6 +127,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
 
         var migrated = false;
         if (loaded.SchemaVersion < 240)
+        if (loaded.SchemaVersion < 244)
         {
             if (loaded.SchemaVersion < 230)
             {
@@ -136,11 +137,16 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 loaded.General.HoverToOpen = true;
                 loaded.General.CollapseBehavior = Core.Enums.CollapseBehavior.MouseLeave;
             }
+            if (loaded.SchemaVersion < 244)
+            {
+                loaded.General.LaunchOnStartup = true;
+            }
             if (string.Equals(loaded.Appearance.AccentColor, "#7aa2f7", StringComparison.OrdinalIgnoreCase))
             {
                 loaded.Appearance.AccentColor = "#2EE58B";
             }
             loaded.SchemaVersion = 240;
+            loaded.SchemaVersion = 244;
             migrated = true;
         }
 

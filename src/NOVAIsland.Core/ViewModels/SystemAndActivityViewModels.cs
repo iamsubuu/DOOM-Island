@@ -97,6 +97,14 @@ public sealed partial class NotificationsViewModel : ObservableObject
         RebuildVisible();
     }
 
+    public void RemoveByPlatformId(uint nativeId)
+    {
+        if (_items.RemoveAll(n => n.PlatformNotificationId == nativeId) > 0)
+        {
+            RebuildVisible();
+        }
+    }
+
     private void RebuildVisible()
     {
         VisibleNotifications.Clear();

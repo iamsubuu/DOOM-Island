@@ -42,15 +42,15 @@
                 BorderThickness="1,0,1,1">
 
                 <Grid>
-                    <!-- Dr. Von Doom Emerald Glassmorphism Ambient Glow & Top Specular Layer -->
+                    <!-- Live Theme Ambient Glow & Top Glossy Glass Sheen Layer -->
                     <Border
                         x:Name="DoomAmbientGlow"
                         IsHitTestVisible="False"
                         CornerRadius="{Binding ElementName=PillShell, Path=CornerRadius}">
                         <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#2C2EE58B" Offset="0" />
-                                <GradientStop Color="#1210B981" Offset="0.38" />
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop x:Name="AmbientStop0" Color="#32A855F7" Offset="0" />
+                                <GradientStop x:Name="AmbientStop1" Color="#1822D3EE" Offset="0.52" />
                                 <GradientStop Color="#00000000" Offset="1" />
                             </LinearGradientBrush>
                         </Border.Background>
@@ -62,14 +62,14 @@
                         CornerRadius="{Binding ElementName=PillShell, Path=CornerRadius}">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#1EFFFFFF" Offset="0" />
-                                <GradientStop Color="#06FFFFFF" Offset="0.22" />
+                                <GradientStop x:Name="GlassSheenTopStop" Color="#2CFFFFFF" Offset="0" />
+                                <GradientStop x:Name="GlassSheenMidStop" Color="#08FFFFFF" Offset="0.26" />
                                 <GradientStop Color="#00FFFFFF" Offset="1" />
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
 
-                    <!-- Live Dr. Doom Mystic Energy Sweep along Bottom Glass Rim -->
+                    <!-- Live Theme Energy Sweep along Bottom Glass Rim -->
                     <Border
                         x:Name="DoomEnergySweep"
                         IsHitTestVisible="False"
@@ -81,9 +81,10 @@
                         Margin="0,0,0,1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                <GradientStop Color="#002EE58B" Offset="0" />
-                                <GradientStop Color="#AA2EE58B" Offset="0.5" />
-                                <GradientStop Color="#002EE58B" Offset="1" />
+                                <GradientStop x:Name="EnergySweepStartStop" Color="#00A855F7" Offset="0" />
+                                <GradientStop x:Name="EnergySweepMidStop" Color="#CCA855F7" Offset="0.38" />
+                                <GradientStop x:Name="EnergySweepMid2Stop" Color="#CC22D3EE" Offset="0.65" />
+                                <GradientStop x:Name="EnergySweepEndStop" Color="#0022D3EE" Offset="1" />
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
@@ -92,7 +93,7 @@
                     <Grid
                         x:Name="StealthBarView"
                         Visibility="Collapsed"
-                        Height="14"
+                        Height="10"
                         Background="#02000000">
                         <Border
                             x:Name="StealthHoverLine"
@@ -106,9 +107,10 @@
                             BorderThickness="0,0,0,0.75">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#222EE58B" Offset="0" />
-                                    <GradientStop Color="#EE2EE58B" Offset="0.5" />
-                                    <GradientStop Color="#222EE58B" Offset="1" />
+                                    <GradientStop x:Name="StealthLineStartStop" Color="#22A855F7" Offset="0" />
+                                    <GradientStop x:Name="StealthLineMidStop" Color="#EEA855F7" Offset="0.45" />
+                                    <GradientStop x:Name="StealthLineMid2Stop" Color="#EE22D3EE" Offset="0.6" />
+                                    <GradientStop x:Name="StealthLineEndStop" Color="#2222D3EE" Offset="1" />
                                 </LinearGradientBrush>
                             </Border.Background>
                         </Border>
@@ -126,12 +128,12 @@
                                 Width="6"
                                 Height="6"
                                 Fill="{StaticResource NovaAccentBrush}" />
-                            <TextBlock
-                                x:Name="CompactWordmark"
-                                Text="DOOM"
-                                FontSize="12"
-                                FontWeight="Medium"
-                                Foreground="#FFF4F4F5" />
+                            <Border
+                                x:Name="IdleBreatheBar"
+                                Width="18"
+                                Height="2"
+                                CornerRadius="1"
+                                Background="{StaticResource NovaAccentBrush}" />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -146,12 +148,6 @@
                                 Style="{StaticResource MonoTabularTextStyle}"
                                 Foreground="#FFD4D4D8" />
                             <StackPanel x:Name="CompactIdleGroup" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Border
-                                    x:Name="IdleBreatheBar"
-                                    Width="18"
-                                    Height="2"
-                                    CornerRadius="1"
-                                    Background="{StaticResource NovaAccentBrush}" />
                                 <TextBlock Text="Ready" FontSize="11" Foreground="{StaticResource IslandTextMutedBrush}" />
                             </StackPanel>
                         </StackPanel>

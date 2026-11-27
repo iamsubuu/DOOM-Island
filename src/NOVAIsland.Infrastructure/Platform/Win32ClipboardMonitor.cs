@@ -85,6 +85,18 @@ public sealed class Win32ClipboardMonitor : IClipboardMonitorService, IDisposabl
 
     private async Task HandleClipboardUpdateAsync()
     {
+        try
+        {
+            await HandleClipboardUpdateCoreAsync();
+        }
+        catch
+        {
+            // Prevent transient clipboard lock or GDI decode errors from bubbling out of fire-and-forget handler
+        }
+    }
+
+    private async Task HandleClipboardUpdateCoreAsync()
+    {
         if (_suppressNextCapture)
         {
             _suppressNextCapture = false;

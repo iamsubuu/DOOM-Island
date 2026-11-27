@@ -6,5 +6,9 @@
     <Deterministic>true</Deterministic>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RollForward>LatestMajor</RollForward>
+    <Company>ArcSubash</Company>
+    <Authors>ArcSubash</Authors>
+    <Product>DOOM Island</Product>
+    <Copyright>Copyright © ArcSubash</Copyright>
   </PropertyGroup>
 </Project>

@@ -20,12 +20,14 @@ public sealed class NativeMessagingEndToEndTests
 
         Assert.True(File.Exists(hostExe), $"Host exe missing at {hostExe}");
 
-        await using var bridge = new BrowserMediaBridgeService();
+        var pipeName = $"DOOMIsland.TestPipe.{Guid.NewGuid():N}";
+        await using var bridge = new BrowserMediaBridgeService(pipeName);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await bridge.StartAsync(cts.Token);
 
         var psi = new ProcessStartInfo(hostExe)
         {
+            Arguments = $"--pipe={pipeName}",
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -45,8 +47,8 @@ public sealed class NativeMessagingEndToEndTests
                 }
             };
 
-            // Give BrowserHost a brief moment to connect to the user Named Pipe
-            await Task.Delay(350, cts.Token);
+            // Give BrowserHost a brief moment to connect to the isolated test Named Pipe
+            await Task.Delay(500, cts.Token);
 
             // 1. Send browser_connected + media_detected over Native Messaging stdin
             await NativeMessagingFramer.WriteAsync(proc.StandardInput.BaseStream, new NativeMessageEnvelope

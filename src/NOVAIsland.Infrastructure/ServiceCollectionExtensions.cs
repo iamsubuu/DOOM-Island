@@ -39,7 +39,8 @@ public static class ServiceCollectionExtensions
             new CompositeBrowserMediaBridge(
                 sp.GetRequiredService<BrowserMediaBridgeService>(),
                 sp.GetRequiredService<SqliteDbContext>(),
-                () => sp.GetRequiredService<SettingsViewModel>().Settings.BrowserIntegration));
+                () => sp.GetRequiredService<SettingsViewModel>().Settings.BrowserIntegration,
+                () => sp.GetRequiredService<SettingsViewModel>().Settings.Privacy.LocalOnlyMode));
         services.AddSingleton<IBrowserMediaBridge>(sp => sp.GetRequiredService<CompositeBrowserMediaBridge>());
 
         if (enableFileLogs)

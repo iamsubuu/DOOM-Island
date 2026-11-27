@@ -17,22 +17,58 @@ internal sealed class SetupForm : Form
 
     public SetupForm(string defaultInstallDir)
     {
-        Text = "DOOM Island Setup v2.3.1";
+        Text = $"DOOM Island Setup v{InstallerEngine.AppVersion}";
+        try
+        {
+            var exePath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(exePath))
+            {
+                Icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+            }
+        }
+        catch { }
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(540, 395);
+        ClientSize = new Size(540, 420);
         BackColor = Color.FromArgb(14, 15, 20);
         ForeColor = Color.FromArgb(244, 244, 246);
         Font = new Font("Segoe UI", 9.5f);
 
+        PictureBox? logoBox = null;
+        try
+        {
+            using var logoStream = typeof(SetupForm).Assembly.GetManifestResourceStream("DOOMIsland.Logo.png");
+            if (logoStream is not null)
+            {
+                logoBox = new PictureBox
+                {
+                    Image = Image.FromStream(logoStream),
+                    SizeMode = PictureBoxSizeMode.Zoom,
+                    Location = new Point(24, 20),
+                    Size = new Size(46, 46)
+                };
+            }
+        }
+        catch { }
+
+        var titleX = logoBox is not null ? 80 : 24;
         var titleLabel = new Label
         {
             Text = "Install DOOM Island",
             Font = new Font("Segoe UI Semibold", 16f),
             ForeColor = Color.White,
-            Location = new Point(24, 20),
+            Location = new Point(titleX, 18),
+            AutoSize = true
+        };
+
+        var publisherLabel = new Label
+        {
+            Text = $"Publisher: {InstallerEngine.PublisherName} · v{InstallerEngine.AppVersion}",
+            Font = new Font("Segoe UI Semibold", 9.5f),
+            ForeColor = Color.FromArgb(122, 162, 247),
+            Location = new Point(titleX + 2, 47),
             AutoSize = true
         };
 
@@ -40,7 +76,7 @@ internal sealed class SetupForm : Form
         {
             Text = "Native Windows Dynamic Island with automatic Chrome, Edge & Opera media sync",
             ForeColor = Color.FromArgb(161, 161, 175),
-            Location = new Point(26, 54),
+            Location = new Point(26, 76),
             Size = new Size(490, 22)
         };
 
@@ -48,14 +84,14 @@ internal sealed class SetupForm : Form
         {
             Text = "Installation folder",
             ForeColor = Color.FromArgb(212, 212, 220),
-            Location = new Point(26, 92),
+            Location = new Point(26, 112),
             AutoSize = true
         };
 
         _pathBox = new TextBox
         {
             Text = defaultInstallDir,
-            Location = new Point(26, 116),
+            Location = new Point(26, 136),
             Size = new Size(400, 27),
             BackColor = Color.FromArgb(24, 26, 34),
             ForeColor = Color.White,
@@ -65,7 +101,7 @@ internal sealed class SetupForm : Form
         _browseButton = new Button
         {
             Text = "Browse...",
-            Location = new Point(434, 115),
+            Location = new Point(434, 135),
             Size = new Size(80, 27),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(32, 35, 46),
@@ -78,7 +114,7 @@ internal sealed class SetupForm : Form
         {
             Text = "Auto-connect Chrome, Edge & Opera media (SMTC + Native Messaging host)",
             Checked = true,
-            Location = new Point(26, 162),
+            Location = new Point(26, 182),
             Size = new Size(490, 24),
             ForeColor = Color.FromArgb(228, 228, 236)
         };
@@ -87,17 +123,17 @@ internal sealed class SetupForm : Form
         {
             Text = "Create Desktop shortcut",
             Checked = true,
-            Location = new Point(26, 192),
+            Location = new Point(26, 212),
             Size = new Size(320, 24),
             ForeColor = Color.FromArgb(228, 228, 236)
         };
 
         _startupCheck = new CheckBox
         {
-            Text = "Start DOOM Island automatically when Windows starts",
-            Checked = false,
-            Location = new Point(26, 222),
-            Size = new Size(420, 24),
+            Text = "Start DOOM Island in background on Windows startup (stealth bar only)",
+            Checked = true,
+            Location = new Point(26, 242),
+            Size = new Size(490, 24),
             ForeColor = Color.FromArgb(228, 228, 236)
         };
 
@@ -105,7 +141,7 @@ internal sealed class SetupForm : Form
         {
             Text = "Launch DOOM Island right after installation",
             Checked = true,
-            Location = new Point(26, 252),
+            Location = new Point(26, 272),
             Size = new Size(380, 24),
             ForeColor = Color.FromArgb(228, 228, 236)
         };
@@ -113,14 +149,14 @@ internal sealed class SetupForm : Form
         _statusLabel = new Label
         {
             Text = "Ready to install.",
-            Location = new Point(26, 294),
+            Location = new Point(26, 314),
             Size = new Size(488, 20),
             ForeColor = Color.FromArgb(148, 163, 184)
         };
 
         _progressBar = new ProgressBar
         {
-            Location = new Point(26, 318),
+            Location = new Point(26, 338),
             Size = new Size(488, 10),
             Style = ProgressBarStyle.Continuous
         };
@@ -128,7 +164,7 @@ internal sealed class SetupForm : Form
         _installButton = new Button
         {
             Text = "Install",
-            Location = new Point(332, 344),
+            Location = new Point(332, 366),
             Size = new Size(92, 32),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(122, 162, 247),
@@ -141,7 +177,7 @@ internal sealed class SetupForm : Form
         _cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(432, 344),
+            Location = new Point(432, 366),
             Size = new Size(82, 32),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(32, 35, 46),
@@ -150,11 +186,24 @@ internal sealed class SetupForm : Form
         _cancelButton.FlatAppearance.BorderColor = Color.FromArgb(55, 60, 78);
         _cancelButton.Click += (_, _) => Close();
 
+        var footerLabel = new Label
+        {
+            Text = $"© {InstallerEngine.PublisherName} · github.com/ArcSubash",
+            ForeColor = Color.FromArgb(120, 126, 144),
+            Location = new Point(26, 374),
+            AutoSize = true
+        };
+
+        if (logoBox is not null)
+        {
+            Controls.Add(logoBox);
+        }
+
         Controls.AddRange(
         [
-            titleLabel, subtitleLabel, dirLabel, _pathBox, _browseButton,
+            titleLabel, publisherLabel, subtitleLabel, dirLabel, _pathBox, _browseButton,
             _browsersCheck, _desktopCheck, _startupCheck, _launchCheck,
-            _statusLabel, _progressBar, _installButton, _cancelButton
+            _statusLabel, _progressBar, footerLabel, _installButton, _cancelButton
         ]);
     }
 

@@ -8,8 +8,13 @@ namespace NOVAIsland.Infrastructure.Platform;
 public sealed class MultiMonitorPositioner : IWindowPositioningService
 {
     private IntPtr _islandHwnd;
+    private (IntPtr Hwnd, int X, int Y, int W, int H)? _lastAppliedBounds;
 
-    public void AttachWindow(IntPtr hwnd) => _islandHwnd = hwnd;
+    public void AttachWindow(IntPtr hwnd)
+    {
+        _islandHwnd = hwnd;
+        _lastAppliedBounds = null;
+    }
 
     public IReadOnlyList<DisplayMonitorInfo> GetMonitors()
     {
@@ -58,6 +63,13 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
 
         x = Math.Clamp(x, bounds.Left + 8, Math.Max(bounds.Left + 8, bounds.Right - widthPx - 8));
         y = Math.Clamp(y, bounds.Top, Math.Max(bounds.Top, bounds.Bottom - heightPx - 8));
+
+        var target = (_islandHwnd, x, y, widthPx, heightPx);
+        if (_lastAppliedBounds == target)
+        {
+            return;
+        }
+        _lastAppliedBounds = target;
 
         Win32Interop.SetWindowPos(
             _islandHwnd,

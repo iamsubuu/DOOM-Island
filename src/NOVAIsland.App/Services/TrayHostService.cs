@@ -9,6 +9,7 @@ namespace NOVAIsland.App.Services;
 public sealed class TrayHostService : ITrayService, IDisposable
 {
     private TaskbarIcon? _trayIcon;
+    private System.Drawing.Icon? _loadedTrayIcon;
     private IntPtr _hIcon;
 
     public event EventHandler? OpenDashboardRequested;
@@ -31,7 +32,17 @@ public sealed class TrayHostService : ITrayService, IDisposable
             return;
         }
 
-        _hIcon = CreateGeneratedTrayIcon();
+        var trayIcon = LoadTrayIcon();
+        if (trayIcon is null)
+        {
+            _hIcon = CreateGeneratedTrayIcon();
+            trayIcon = _hIcon != IntPtr.Zero ? System.Drawing.Icon.FromHandle(_hIcon) : null;
+        }
+        else
+        {
+            _loadedTrayIcon = trayIcon;
+        }
+
         var flyout = new MenuFlyout();
 
         AddItem(flyout, "Open Dashboard", () => OpenDashboardRequested?.Invoke(this, EventArgs.Empty));
@@ -48,14 +59,14 @@ public sealed class TrayHostService : ITrayService, IDisposable
         var deterministicId = H.NotifyIcon.Core.TrayIcon.CreateUniqueGuidFromString(
             $"DOOMIsland::{Environment.ProcessPath ?? appName}");
 
-        if (!TryCreateTrayIcon(deterministicId, appName, flyout) &&
-            !TryCreateTrayIcon(Guid.NewGuid(), appName, flyout))
+        if (!TryCreateTrayIcon(deterministicId, appName, flyout, trayIcon) &&
+            !TryCreateTrayIcon(Guid.NewGuid(), appName, flyout, trayIcon))
         {
             DisposeTray();
         }
     }
 
-    private bool TryCreateTrayIcon(Guid id, string appName, MenuFlyout flyout)
+    private bool TryCreateTrayIcon(Guid id, string appName, MenuFlyout flyout, System.Drawing.Icon? trayIcon)
     {
         var candidate = new TaskbarIcon
         {
@@ -63,7 +74,7 @@ public sealed class TrayHostService : ITrayService, IDisposable
             ToolTipText = appName,
             ContextFlyout = flyout,
             ContextMenuMode = ContextMenuMode.PopupMenu,
-            Icon = _hIcon != IntPtr.Zero ? System.Drawing.Icon.FromHandle(_hIcon) : null
+            Icon = trayIcon
         };
 
         try
@@ -91,11 +102,28 @@ public sealed class TrayHostService : ITrayService, IDisposable
     {
         _trayIcon?.Dispose();
         _trayIcon = null;
+        _loadedTrayIcon?.Dispose();
+        _loadedTrayIcon = null;
         if (_hIcon != IntPtr.Zero)
         {
             DestroyIcon(_hIcon);
             _hIcon = IntPtr.Zero;
         }
+    }
+
+    private static System.Drawing.Icon? LoadTrayIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "DOOMIsland.ico");
+            if (File.Exists(iconPath))
+            {
+                return new System.Drawing.Icon(iconPath, new System.Drawing.Size(32, 32));
+            }
+        }
+        catch { }
+
+        return null;
     }
 
     public void Dispose() => DisposeTray();
