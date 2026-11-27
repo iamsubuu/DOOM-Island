@@ -20,12 +20,12 @@ namespace NOVAIsland.Infrastructure.Platform;
 [SupportedOSPlatform("windows10.0.19041.0")]
 public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDisposable
 {
-    private sealed record BrowserIdentity(string DisplayName, string[] ProcessNames, int SyntheticTabId);
+    internal sealed record MediaIdentity(string DisplayName, string[] ProcessNames, int SyntheticTabId, bool IsBrowser);
 
     private sealed class SmtcTrackedSession
     {
         public required GlobalSystemMediaTransportControlsSession SmtcSession { get; init; }
-        public required BrowserIdentity Identity { get; init; }
+        public required MediaIdentity Identity { get; init; }
         public required BrowserMediaSession Model { get; set; }
     }
 
@@ -101,7 +101,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
                 return $"{currentSmtc.Identity.DisplayName} (Auto)";
             }
 
-            return _smtcReady ? "Chrome · Edge · Opera (Auto)" : null;
+            return _smtcReady ? "Browsers & System Media" : null;
         }
     }
 
@@ -279,7 +279,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             foreach (var session in sessions)
             {
                 var aumid = session.SourceAppUserModelId;
-                var identity = TryResolveBrowserIdentity(aumid);
+                var identity = TryResolveMediaIdentity(aumid);
                 if (identity is null)
                 {
                     continue;
@@ -319,7 +319,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
     private async Task RefreshSingleSessionAsync(GlobalSystemMediaTransportControlsSession session)
     {
         var aumid = session.SourceAppUserModelId;
-        var identity = TryResolveBrowserIdentity(aumid);
+        var identity = TryResolveMediaIdentity(aumid);
         if (identity is null)
         {
             return;
@@ -349,7 +349,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
 
     private async Task<BrowserMediaSession> BuildSessionModelAsync(
         GlobalSystemMediaTransportControlsSession session,
-        BrowserIdentity identity,
+        MediaIdentity identity,
         bool isCurrent)
     {
         var playback = session.GetPlaybackInfo();
@@ -407,8 +407,8 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
             Browser = identity.DisplayName,
             TabId = identity.SyntheticTabId,
             WindowId = 0,
-            Origin = "smtc://auto",
-            UrlHost = $"{identity.DisplayName} · Auto",
+            Origin = identity.IsBrowser ? "smtc://auto" : "smtc://system",
+            UrlHost = identity.IsBrowser ? $"{identity.DisplayName} · Auto" : "Local Media · System",
             TabTitle = title,
             Title = title,
             Artist = artist,
@@ -542,44 +542,138 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
         });
     }
 
-    private static BrowserIdentity? TryResolveBrowserIdentity(string? aumid)
+    internal static MediaIdentity? TryResolveMediaIdentity(string? aumid)
     {
         if (string.IsNullOrWhiteSpace(aumid))
         {
             return null;
         }
 
-        var lower = aumid.ToLowerInvariant();
+        var trimmed = aumid.Trim();
+        var lower = trimmed.ToLowerInvariant();
+        if (lower.Contains("doomisland") || lower.Contains("novaisland"))
+        {
+            return null;
+        }
+
         if (lower.Contains("msedge") || lower.Contains("microsoftedge"))
         {
-            return new BrowserIdentity("Microsoft Edge", ["msedge"], CreateSyntheticTabId("msedge"));
+            return new MediaIdentity("Microsoft Edge", ["msedge"], CreateSyntheticTabId("msedge"), IsBrowser: true);
         }
         if (lower.Contains("operagx") || lower.Contains("opera_gx"))
         {
-            return new BrowserIdentity("Opera GX", ["opera"], CreateSyntheticTabId("operagx"));
+            return new MediaIdentity("Opera GX", ["opera"], CreateSyntheticTabId("operagx"), IsBrowser: true);
         }
         if (lower.Contains("opera"))
         {
-            return new BrowserIdentity("Opera", ["opera"], CreateSyntheticTabId("opera"));
+            return new MediaIdentity("Opera", ["opera"], CreateSyntheticTabId("opera"), IsBrowser: true);
         }
         if (lower.Contains("chrome"))
         {
-            return new BrowserIdentity("Google Chrome", ["chrome"], CreateSyntheticTabId("chrome"));
+            return new MediaIdentity("Google Chrome", ["chrome"], CreateSyntheticTabId("chrome"), IsBrowser: true);
         }
         if (lower.Contains("brave"))
         {
-            return new BrowserIdentity("Brave", ["brave"], CreateSyntheticTabId("brave"));
+            return new MediaIdentity("Brave", ["brave"], CreateSyntheticTabId("brave"), IsBrowser: true);
         }
         if (lower.Contains("vivaldi"))
         {
-            return new BrowserIdentity("Vivaldi", ["vivaldi"], CreateSyntheticTabId("vivaldi"));
+            return new MediaIdentity("Vivaldi", ["vivaldi"], CreateSyntheticTabId("vivaldi"), IsBrowser: true);
         }
         if (lower.Contains("firefox"))
         {
-            return new BrowserIdentity("Firefox", ["firefox"], CreateSyntheticTabId("firefox"));
+            return new MediaIdentity("Firefox", ["firefox"], CreateSyntheticTabId("firefox"), IsBrowser: true);
         }
 
-        return null;
+        // System / local media players (Spotify, VLC, Windows Media Player, Movies & TV, PotPlayer, mpv, foobar2000, etc.)
+        if (lower.Contains("spotify"))
+        {
+            return new MediaIdentity("Spotify", ["Spotify"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("zunemusic") || lower.Contains("microsoft.media.player"))
+        {
+            return new MediaIdentity("Media Player", ["Microsoft.Media.Player", "Music.UI"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("zunevideo"))
+        {
+            return new MediaIdentity("Movies & TV", ["Video.UI"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("vlc"))
+        {
+            return new MediaIdentity("VLC Media Player", ["vlc"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("potplayer"))
+        {
+            return new MediaIdentity("PotPlayer", ["PotPlayerMini64", "PotPlayerMini", "PotPlayer64", "PotPlayer"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("mpc-hc") || lower.Contains("mpc-be"))
+        {
+            return new MediaIdentity("MPC Player", ["mpc-hc64", "mpc-hc", "mpc-be64", "mpc-be"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower == "mpv.exe" || lower.Contains("\\mpv.exe") || lower == "mpv")
+        {
+            return new MediaIdentity("mpv", ["mpv"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("foobar2000"))
+        {
+            return new MediaIdentity("foobar2000", ["foobar2000"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("aimp"))
+        {
+            return new MediaIdentity("AIMP", ["AIMP"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("musicbee"))
+        {
+            return new MediaIdentity("MusicBee", ["MusicBee"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+        if (lower.Contains("applemusic") || lower.Contains("itunes"))
+        {
+            return new MediaIdentity("Apple Music", ["AppleMusic", "iTunes"], CreateSyntheticTabId(lower), IsBrowser: false);
+        }
+
+        var friendly = FormatSystemMediaName(trimmed, out var procStem);
+        string[] procs = string.IsNullOrWhiteSpace(procStem) ? [] : [procStem];
+        return new MediaIdentity(friendly, procs, CreateSyntheticTabId(lower), IsBrowser: false);
+    }
+
+    private static string FormatSystemMediaName(string aumid, out string? processStem)
+    {
+        var raw = aumid.Trim();
+        var bang = raw.IndexOf('!');
+        if (bang > 0)
+        {
+            raw = raw[..bang];
+        }
+
+        var underscore = raw.IndexOf('_');
+        if (underscore > 0 && raw.Length - underscore >= 10)
+        {
+            raw = raw[..underscore];
+        }
+
+        var slash = Math.Max(raw.LastIndexOf('\\'), raw.LastIndexOf('/'));
+        if (slash >= 0 && slash < raw.Length - 1)
+        {
+            raw = raw[(slash + 1)..];
+        }
+
+        if (raw.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            processStem = Path.GetFileNameWithoutExtension(raw);
+            raw = processStem;
+        }
+        else
+        {
+            processStem = raw;
+        }
+
+        if (raw.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase))
+        {
+            raw = raw["Microsoft.".Length..];
+        }
+
+        raw = raw.Replace('.', ' ').Replace('_', ' ').Trim();
+        return string.IsNullOrWhiteSpace(raw) ? "System Media" : raw;
     }
 
     private static string NormalizeBrowserKey(string? browser)

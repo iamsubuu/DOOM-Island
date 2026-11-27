@@ -35,10 +35,14 @@ public static partial class Win32Interop
     public static readonly IntPtr HWND_MESSAGE = new(-3);
 
     public const uint WM_GETMINMAXINFO = 0x0024;
+    public const uint WM_MOUSEACTIVATE = 0x0021;
     public const uint WM_NCCALCSIZE = 0x0083;
     public const uint WM_NCHITTEST = 0x0084;
     public const uint WM_CLIPBOARDUPDATE = 0x031D;
     public const uint WM_HOTKEY = 0x0312;
+
+    public const int MA_ACTIVATE = 1;
+    public const int MA_NOACTIVATE = 3;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MINMAXINFO
@@ -131,6 +135,10 @@ public static partial class Win32Interop
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     public static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);

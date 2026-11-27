@@ -62,22 +62,44 @@ public sealed partial class MusicViewModel : ObservableObject
         _bridge.StateChanged += (_, _) => SyncFromBridge();
     }
 
+    public event EventHandler<BrowserMediaSession?>? TrackChanged;
+
     public void SyncFromBridge()
     {
+        bool connected;
+        string? browserName;
+        BrowserMediaSession? current;
+        List<BrowserMediaSession> sessions;
+
         lock (_syncLock)
         {
-            IsBrowserConnected = _bridge.IsConnected;
-            ConnectedBrowserName = _bridge.ConnectedBrowserName;
-            CurrentSession = _bridge.CurrentSession;
-            LivePositionSeconds = _bridge.CurrentSession?.PositionSeconds ?? 0;
+            connected = _bridge.IsConnected;
+            browserName = _bridge.ConnectedBrowserName;
+            current = _bridge.CurrentSession;
+            sessions = _bridge.ActiveSessions.ToList();
+        }
+
+        NovaUiDispatcher.Post(() =>
+        {
+            var prevTrackKey = LyricsViewModel.BuildTrackKey(_currentSession);
+            IsBrowserConnected = connected;
+            ConnectedBrowserName = browserName;
+            CurrentSession = current;
+            LivePositionSeconds = current?.PositionSeconds ?? 0;
             _lastClockTicks = Stopwatch.GetTimestamp();
 
             BrowserTabs.Clear();
-            foreach (var session in _bridge.ActiveSessions)
+            foreach (var session in sessions)
             {
                 BrowserTabs.Add(session);
             }
-        }
+
+            var nextTrackKey = LyricsViewModel.BuildTrackKey(current);
+            if (!string.Equals(prevTrackKey, nextTrackKey, StringComparison.Ordinal))
+            {
+                TrackChanged?.Invoke(this, current);
+            }
+        });
     }
 
     public void AdvancePlaybackByClock()
@@ -141,6 +163,9 @@ public sealed partial class LyricsViewModel : ObservableObject
 {
     private readonly ILyricsService _lyricsService;
     private readonly MusicViewModel _music;
+    private readonly Lock _loadLock = new();
+    private CancellationTokenSource? _trackLoadCts;
+    private long _trackLoadSeq;
 
     public ObservableCollection<LyricLine> Lines { get; } = [];
     public ObservableCollection<LyricsSearchResult> SearchResults { get; } = [];
@@ -181,22 +206,61 @@ public sealed partial class LyricsViewModel : ObservableObject
         _music = music;
     }
 
-    public async Task LoadForCurrentTrackAsync(bool allowNetwork, CancellationToken cancellationToken = default)
+    public static string BuildTrackKey(BrowserMediaSession? session) =>
+        session is null || string.IsNullOrWhiteSpace(session.Title)
+            ? string.Empty
+            : $"{session.Artist?.Trim()}::{session.Title.Trim()}";
+
+    public Task LoadForCurrentTrackAsync(bool allowNetwork, CancellationToken cancellationToken = default) =>
+        LoadForSessionAsync(_music.CurrentSession, allowNetwork, cancellationToken);
+
+    public async Task LoadForSessionAsync(
+        BrowserMediaSession? session,
+        bool allowNetwork,
+        CancellationToken cancellationToken = default)
     {
-        var session = _music.CurrentSession;
+        long seq;
+        CancellationTokenSource linkedCts;
+        lock (_loadLock)
+        {
+            seq = Interlocked.Increment(ref _trackLoadSeq);
+            _trackLoadCts?.Cancel();
+            _trackLoadCts?.Dispose();
+            linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _trackLoadCts = linkedCts;
+        }
+
         if (session is null || string.IsNullOrWhiteSpace(session.Title))
         {
-            Lines.Clear();
-            Source = LyricsSourceKind.None;
-            IsSynced = false;
-            ActiveLineIndex = -1;
+            NovaUiDispatcher.Post(() =>
+            {
+                if (Volatile.Read(ref _trackLoadSeq) != seq) return;
+                TrackTitle = string.Empty;
+                ArtistName = string.Empty;
+                Lines.Clear();
+                Source = LyricsSourceKind.None;
+                IsSynced = false;
+                IsInstrumental = false;
+                ActiveLineIndex = -1;
+                IsLoading = false;
+            });
             return;
         }
 
-        var requestedKey = $"{session.Artist}::{session.Title}";
-        TrackTitle = session.Title;
-        ArtistName = session.Artist;
-        IsLoading = true;
+        var requestedKey = BuildTrackKey(session);
+        NovaUiDispatcher.Post(() =>
+        {
+            if (Volatile.Read(ref _trackLoadSeq) != seq) return;
+            TrackTitle = session.Title;
+            ArtistName = session.Artist;
+            Lines.Clear();
+            Source = LyricsSourceKind.None;
+            IsSynced = false;
+            IsInstrumental = false;
+            ActiveLineIndex = -1;
+            IsLoading = true;
+        });
+
         try
         {
             var result = await _lyricsService.GetLyricsAsync(
@@ -205,17 +269,32 @@ public sealed partial class LyricsViewModel : ObservableObject
                 session.Album,
                 session.DurationSeconds,
                 allowNetwork,
-                cancellationToken);
+                linkedCts.Token);
 
-            var current = _music.CurrentSession;
-            if (current is not null && $"{current.Artist}::{current.Title}" == requestedKey)
+            NovaUiDispatcher.Post(() =>
             {
-                ApplyResult(result);
-            }
+                if (Volatile.Read(ref _trackLoadSeq) != seq) return;
+                var current = _music.CurrentSession;
+                if (current is null || BuildTrackKey(current) == requestedKey)
+                {
+                    ApplyResult(result);
+                }
+                IsLoading = false;
+            });
         }
-        finally
+        catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
         {
-            IsLoading = false;
+            // Superseded by newer track load or shutdown
+        }
+        catch
+        {
+            NovaUiDispatcher.Post(() =>
+            {
+                if (Volatile.Read(ref _trackLoadSeq) == seq)
+                {
+                    IsLoading = false;
+                }
+            });
         }
     }
 

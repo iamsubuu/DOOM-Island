@@ -513,14 +513,14 @@ public sealed class WinRtNotificationListenerService : INotificationListenerServ
 
     private async void OnNotificationChanged(UserNotificationListener sender, UserNotificationChangedEventArgs args)
     {
-        if (args.ChangeKind == UserNotificationChangedKind.Removed)
-        {
-            NotificationRemoved?.Invoke(this, args.UserNotificationId);
-            return;
-        }
-
         try
         {
+            if (args.ChangeKind == UserNotificationChangedKind.Removed)
+            {
+                NotificationRemoved?.Invoke(this, args.UserNotificationId);
+                return;
+            }
+
             var all = await sender.GetNotificationsAsync(NotificationKinds.Toast);
             var match = all.FirstOrDefault(n => n.Id == args.UserNotificationId);
             if (match is not null && !IsBrowserHandler(match.AppInfo?.AppUserModelId))
@@ -530,7 +530,7 @@ public sealed class WinRtNotificationListenerService : INotificationListenerServ
         }
         catch
         {
-            // Ignore transient WinRT read race.
+            // Ignore transient WinRT read race or removal failures.
         }
     }
 

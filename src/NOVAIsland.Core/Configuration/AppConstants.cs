@@ -14,7 +14,7 @@ public static class AppConstants
     public const string StorePackagePublisher = "CN=AAFF5C79-617E-404B-893B-24B04B60D21C";
     public const string StorePackageFamilyName = "ArcSubash.DOOMIsland-DynamicIsland_vafw60knffsyr";
     public const string StorePackageSid = "S-1-15-2-1756612410-509526401-1413686036-2906866903-3647860765-3449130613-1752073460";
-    public const string AppVersion = "2.4.5";
+    public const string AppVersion = "2.4.9";
     public const string AppDataFolderName = "DOOMIsland";
     public const string DatabaseFileName = "doom_island.db";
     public const string NativeMessagingHostName = "com.doomisland.host";

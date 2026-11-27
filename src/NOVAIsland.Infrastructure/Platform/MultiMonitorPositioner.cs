@@ -16,6 +16,25 @@ public sealed class MultiMonitorPositioner : IWindowPositioningService
         _lastAppliedBounds = null;
     }
 
+    public void ResetBoundsCache() => _lastAppliedBounds = null;
+
+    public void EnsureTopmost()
+    {
+        if (_islandHwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Win32Interop.SetWindowPos(
+            _islandHwnd,
+            Win32Interop.HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            Win32Interop.SWP_NOMOVE | Win32Interop.SWP_NOSIZE | Win32Interop.SWP_NOACTIVATE);
+    }
+
     public IReadOnlyList<DisplayMonitorInfo> GetMonitors()
     {
         var results = new List<DisplayMonitorInfo>();

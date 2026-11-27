@@ -82,7 +82,13 @@ public sealed partial class SettingsWindow : Window
         _lyricsCache = lyricsCache;
         _clipboardRepo = clipboardRepo;
         _themeManager = themeManager;
-        _themeManager.ArtworkPaletteUpdated += (_, _) => DispatcherQueue.TryEnqueue(RefreshAppearancePreview);
+        void OnArtworkPaletteUpdated(object? s, EventArgs e) => DispatcherQueue.TryEnqueue(RefreshAppearancePreview);
+        _themeManager.ArtworkPaletteUpdated += OnArtworkPaletteUpdated;
+        Closed += (_, _) =>
+        {
+            _saveDebounceTimer.Stop();
+            _themeManager.ArtworkPaletteUpdated -= OnArtworkPaletteUpdated;
+        };
 
         _saveDebounceTimer.Interval = TimeSpan.FromMilliseconds(180);
         _saveDebounceTimer.Tick += async (_, _) =>
@@ -568,8 +574,8 @@ public sealed partial class SettingsWindow : Window
     {
         _appearancePreviewHost = new Border
         {
-            Height = 128,
-            CornerRadius = new CornerRadius(12),
+            MinHeight = 250,
+            CornerRadius = new CornerRadius(14),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             BorderThickness = new Thickness(1)
         };
@@ -585,69 +591,408 @@ public sealed partial class SettingsWindow : Window
         }
 
         var app = _settingsVm.Settings.Appearance;
+        var anim = _settingsVm.Settings.Animation;
         var palette = _themeManager.ResolveIslandPalette(app);
-        var previewRadius = Math.Clamp(app.CornerRadius, 14, 32);
+        var previewRadius = Math.Clamp(app.CornerRadius + 2, 18, 32);
         var stealthFlush = _settingsVm.Settings.General.StealthTopBar;
         var surfaceColor = palette.SurfaceColor;
         var primary = palette.PrimaryAccent;
         var secondary = palette.SecondaryAccent;
 
-        var notchBody = new Grid
+        var notchCorner = stealthFlush
+            ? new CornerRadius(0, 0, previewRadius, previewRadius)
+            : new CornerRadius(previewRadius);
+
+        var notchBody = new Grid { MaxWidth = 588 };
+
+        // Live theme ambient glow, glossy sheen & bottom sweep layers matching DynamicIslandWindow
+        if (anim.GlowPulse)
         {
-            Width = Math.Clamp(app.IslandWidth + 68, 250, 360),
-            Height = Math.Clamp(app.IslandHeight + 20, 54, 74)
+            notchBody.Children.Add(new Border
+            {
+                CornerRadius = notchCorner,
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(1, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Color.FromArgb(palette.AmbientTopAlpha, primary.R, primary.G, primary.B), Offset = 0 },
+                        new GradientStop { Color = Color.FromArgb(palette.AmbientMidAlpha, secondary.R, secondary.G, secondary.B), Offset = 0.52 },
+                        new GradientStop { Color = Color.FromArgb(0, 0, 0, 0), Offset = 1 }
+                    }
+                }
+            });
+        }
+
+        if (anim.ShowGlossySheen)
+        {
+            notchBody.Children.Add(new Border
+            {
+                CornerRadius = notchCorner,
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(0, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Color.FromArgb(palette.GlossySheenAlpha, 255, 255, 255), Offset = 0 },
+                        new GradientStop { Color = Color.FromArgb((byte)(palette.GlossySheenAlpha / 4), 255, 255, 255), Offset = 0.28 },
+                        new GradientStop { Color = Color.FromArgb(0, 255, 255, 255), Offset = 1 }
+                    }
+                }
+            });
+        }
+
+        var contentStack = new StackPanel
+        {
+            Padding = new Thickness(16, 10, 16, 12),
+            Spacing = 10
         };
 
-        // Top ambient dual gradient + glossy sheen + bottom energy sweep matching live DynamicIslandWindow
-        notchBody.Children.Add(new Border
+        // Row 0: Actual Top Tab Bar (Notch, Tray, Lyrics, Clipboard, Alerts, Timer, System) + icons
+        var topBar = new Grid();
+        topBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        topBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var tabsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        foreach (var tabLabel in new[] { "Notch", "Tray", "Lyrics", "Clipboard", "Alerts", "Timer", "System" })
         {
-            CornerRadius = stealthFlush ? new CornerRadius(0, 0, previewRadius, previewRadius) : new CornerRadius(previewRadius),
+            var isActive = tabLabel == "Notch";
+            tabsRow.Children.Add(new Border
+            {
+                Padding = new Thickness(8, 3, 8, 3),
+                CornerRadius = new CornerRadius(7),
+                Background = isActive
+                    ? new SolidColorBrush(Color.FromArgb(64, primary.R, primary.G, primary.B))
+                    : new SolidColorBrush(Colors.Transparent),
+                Child = new TextBlock
+                {
+                    Text = tabLabel,
+                    FontSize = 11,
+                    FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Medium,
+                    Foreground = new SolidColorBrush(isActive ? Colors.White : Color.FromArgb(180, 200, 208, 220))
+                }
+            });
+        }
+        Grid.SetColumn(tabsRow, 0);
+        topBar.Children.Add(tabsRow);
+
+        var topIcons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        topIcons.Children.Add(new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\uE713", FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(185, 220, 228, 240)) });
+        topIcons.Children.Add(new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\uE70E", FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(185, 220, 228, 240)) });
+        Grid.SetColumn(topIcons, 1);
+        topBar.Children.Add(topIcons);
+        contentStack.Children.Add(topBar);
+
+        // Row 1: 3-Column Actual Notch Layout (Track + Calendar/Lyrics + Equalizer/Volume)
+        var session = _islandVm.Music.CurrentSession;
+        var mainCols = new Grid { ColumnSpacing = 12 };
+        mainCols.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
+        mainCols.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
+        mainCols.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(116) });
+
+        // Column 0: Artwork + Title/Artist + Transport Controls
+        var mediaGrid = new Grid { ColumnSpacing = 10 };
+        mediaGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
+        mediaGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var artHost = new Grid { Width = 58, Height = 58, VerticalAlignment = VerticalAlignment.Center };
+        var artFrame = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(100, primary.R, primary.G, primary.B)),
             Background = new LinearGradientBrush
             {
                 StartPoint = new Windows.Foundation.Point(0, 0),
                 EndPoint = new Windows.Foundation.Point(1, 1),
                 GradientStops =
                 {
-                    new GradientStop { Color = Color.FromArgb(palette.AmbientTopAlpha, primary.R, primary.G, primary.B), Offset = 0 },
-                    new GradientStop { Color = Color.FromArgb(palette.AmbientMidAlpha, secondary.R, secondary.G, secondary.B), Offset = 0.52 },
-                    new GradientStop { Color = Color.FromArgb(0, 0, 0, 0), Offset = 1 }
+                    new GradientStop { Color = Color.FromArgb(200, primary.R, primary.G, primary.B), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb(210, secondary.R, secondary.G, secondary.B), Offset = 1 }
                 }
             }
-        });
+        };
 
-        notchBody.Children.Add(new Border
+        if (!string.IsNullOrWhiteSpace(session?.ArtworkUrl) && Uri.TryCreate(session.ArtworkUrl, UriKind.Absolute, out var artUri))
         {
-            CornerRadius = stealthFlush ? new CornerRadius(0, 0, previewRadius, previewRadius) : new CornerRadius(previewRadius),
-            Background = new LinearGradientBrush
+            artFrame.Child = new Image
             {
-                StartPoint = new Windows.Foundation.Point(0, 0),
-                EndPoint = new Windows.Foundation.Point(0, 1),
-                GradientStops =
+                Stretch = Stretch.UniformToFill,
+                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(artUri)
+            };
+        }
+        else
+        {
+            artFrame.Child = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                Glyph = "\uE8D6",
+                FontSize = 20,
+                Foreground = new SolidColorBrush(Colors.White),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+        }
+        artHost.Children.Add(artFrame);
+        artHost.Children.Add(new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(5),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, -2, -2),
+            Background = new SolidColorBrush(Color.FromArgb(230, 16, 19, 28)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            Child = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                Glyph = "\uE8D6",
+                FontSize = 9,
+                Foreground = new SolidColorBrush(primary)
+            }
+        });
+        Grid.SetColumn(artHost, 0);
+        mediaGrid.Children.Add(artHost);
+
+        var trackMeta = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+        trackMeta.Children.Add(new TextBlock
+        {
+            Text = session is not null && !string.IsNullOrWhiteSpace(session.Title) ? session.Title : "DOOM Island Live Notch",
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Colors.White),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        trackMeta.Children.Add(new TextBlock
+        {
+            Text = session is not null && !string.IsNullOrWhiteSpace(session.Artist) ? session.Artist : $"{app.Theme} · Theme Preview",
+            FontSize = 10.5,
+            Foreground = new SolidColorBrush(Color.FromArgb(210, 200, 210, 224)),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        trackMeta.Children.Add(new TextBlock
+        {
+            Text = $"{app.Theme} · {app.Opacity:0}% · R{app.CornerRadius:0}",
+            FontSize = 9.5,
+            Foreground = new SolidColorBrush(Color.FromArgb(165, 175, 185, 205)),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+
+        var transportRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        transportRow.Children.Add(new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\uE892", FontSize = 10, Foreground = new SolidColorBrush(Colors.White) });
+        transportRow.Children.Add(new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(11),
+            Background = new SolidColorBrush(Colors.White),
+            Child = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                Glyph = _islandVm.Music.IsPlaying ? "\uE769" : "\uE768",
+                FontSize = 9.5,
+                Foreground = new SolidColorBrush(Color.FromArgb(255, 9, 9, 11))
+            }
+        });
+        transportRow.Children.Add(new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\uE893", FontSize = 10, Foreground = new SolidColorBrush(Colors.White) });
+        transportRow.Children.Add(new Border
+        {
+            Padding = new Thickness(6, 2, 6, 2),
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)),
+            Child = new TextBlock { Text = "Focus", FontSize = 9.5, Foreground = new SolidColorBrush(Color.FromArgb(215, 225, 232, 240)) }
+        });
+        trackMeta.Children.Add(transportRow);
+        Grid.SetColumn(trackMeta, 1);
+        mediaGrid.Children.Add(trackMeta);
+        Grid.SetColumn(mediaGrid, 0);
+        mainCols.Children.Add(mediaGrid);
+
+        // Column 1: Live Date/Week Strip + Lyric Glance Card
+        var centerBorder = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(44, primary.R, primary.G, primary.B)),
+            BorderThickness = new Thickness(1, 0, 1, 0),
+            Padding = new Thickness(10, 2, 10, 2),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var centerStack = new StackPanel { Spacing = 5 };
+
+        var calHeader = new Grid();
+        calHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        calHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var now = DateTime.Now;
+        var today = now.Date;
+        calHeader.Children.Add(new TextBlock
+        {
+            Text = today.ToString("MMM d"),
+            FontSize = 11.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Colors.White),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        var timeLbl = new TextBlock
+        {
+            Text = now.ToString("hh:mm:ss tt"),
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(primary),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(timeLbl, 1);
+        calHeader.Children.Add(timeLbl);
+        centerStack.Children.Add(calHeader);
+
+        var calRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, VerticalAlignment = VerticalAlignment.Center };
+        var startDay = today.AddDays(-2);
+        for (var d = 0; d < 5; d++)
+        {
+            var dt = startDay.AddDays(d);
+            var isToday = dt.Date == today;
+            var dayCol = new StackPanel { Spacing = 0, HorizontalAlignment = HorizontalAlignment.Center };
+            dayCol.Children.Add(new TextBlock
+            {
+                Text = dt.ToString("ddd")[..2],
+                FontSize = 8.5,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = new SolidColorBrush(isToday ? secondary : Color.FromArgb(165, 190, 200, 215))
+            });
+            dayCol.Children.Add(new TextBlock
+            {
+                Text = dt.Day.ToString("00"),
+                FontSize = 10,
+                FontWeight = isToday ? FontWeights.Bold : FontWeights.Normal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = new SolidColorBrush(isToday ? primary : Color.FromArgb(215, 225, 232, 240))
+            });
+            calRow.Children.Add(dayCol);
+        }
+        centerStack.Children.Add(calRow);
+
+        var lyricSnippet = _islandVm.Lyrics.ActiveLineIndex >= 0 && _islandVm.Lyrics.ActiveLineIndex < _islandVm.Lyrics.Lines.Count
+            ? _islandVm.Lyrics.Lines[_islandVm.Lyrics.ActiveLineIndex].Text
+            : null;
+        centerStack.Children.Add(new Border
+        {
+            Padding = new Thickness(8, 5, 8, 5),
+            CornerRadius = new CornerRadius(9),
+            Background = new SolidColorBrush(Color.FromArgb(22, 255, 255, 255)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(52, primary.R, primary.G, primary.B)),
+            BorderThickness = new Thickness(1),
+            Child = new StackPanel
+            {
+                Spacing = 1,
+                Children =
                 {
-                    new GradientStop { Color = Color.FromArgb(palette.GlossySheenAlpha, 255, 255, 255), Offset = 0 },
-                    new GradientStop { Color = Color.FromArgb((byte)(palette.GlossySheenAlpha / 4), 255, 255, 255), Offset = 0.28 },
-                    new GradientStop { Color = Color.FromArgb(0, 255, 255, 255), Offset = 1 }
+                    new TextBlock
+                    {
+                        Text = !string.IsNullOrWhiteSpace(lyricSnippet) ? lyricSnippet : "DOOM Notch Ready",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Medium,
+                        Foreground = new SolidColorBrush(Colors.White),
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    },
+                    new TextBlock
+                    {
+                        Text = "Lrclib · Live synced lyrics",
+                        FontSize = 9,
+                        Foreground = new SolidColorBrush(Color.FromArgb(165, 180, 190, 210)),
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    }
                 }
             }
         });
+        centerBorder.Child = centerStack;
+        Grid.SetColumn(centerBorder, 1);
+        mainCols.Children.Add(centerBorder);
 
-        var inner = new Grid { Padding = new Thickness(16, 8, 16, 10) };
-        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var statusStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        statusStack.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+        // Column 2: Equalizer + Volume Bar + Live Lyrics Button
+        var rightStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 6 };
+        var eqCard = new Border
         {
-            Width = 8,
-            Height = 8,
-            Fill = new SolidColorBrush(primary)
+            Padding = new Thickness(8, 6, 8, 6),
+            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(22, 255, 255, 255)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(46, primary.R, primary.G, primary.B)),
+            BorderThickness = new Thickness(1)
+        };
+        var eqCardStack = new StackPanel { Spacing = 6 };
+        var barsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2.5 };
+        var barHeights = new[] { 6.0, 12.0, 9.0, 14.0, 7.0, 11.0, 5.0 };
+        for (var i = 0; i < barHeights.Length; i++)
+        {
+            barsPanel.Children.Add(new Border
+            {
+                Width = 3,
+                Height = barHeights[i],
+                VerticalAlignment = VerticalAlignment.Bottom,
+                CornerRadius = new CornerRadius(1.5),
+                Background = new SolidColorBrush(i % 2 == 0 ? primary : secondary)
+            });
+        }
+        eqCardStack.Children.Add(barsPanel);
+
+        var volRow = new Grid { ColumnSpacing = 6 };
+        volRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        volRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        volRow.Children.Add(new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\uE767", FontSize = 10, Foreground = new SolidColorBrush(Colors.White) });
+        var volTrack = new Grid { Height = 10, VerticalAlignment = VerticalAlignment.Center };
+        volTrack.Children.Add(new Border { Height = 3, CornerRadius = new CornerRadius(1.5), Background = new SolidColorBrush(Color.FromArgb(55, 255, 255, 255)) });
+        volTrack.Children.Add(new Border { Width = 34, Height = 3, CornerRadius = new CornerRadius(1.5), HorizontalAlignment = HorizontalAlignment.Left, Background = new SolidColorBrush(primary) });
+        volTrack.Children.Add(new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(30, 0, 0, 0), Background = new SolidColorBrush(secondary) });
+        Grid.SetColumn(volTrack, 1);
+        volRow.Children.Add(volTrack);
+        eqCardStack.Children.Add(volRow);
+
+        eqCard.Child = eqCardStack;
+        rightStack.Children.Add(eqCard);
+        rightStack.Children.Add(new Border
+        {
+            Padding = new Thickness(8, 4, 8, 4),
+            CornerRadius = new CornerRadius(7),
+            Background = new SolidColorBrush(Color.FromArgb(24, 255, 255, 255)),
+            Child = new TextBlock { Text = "Live Lyrics", FontSize = 9.5, HorizontalAlignment = HorizontalAlignment.Center, Foreground = new SolidColorBrush(Colors.White) }
         });
-        statusStack.Children.Add(new Border
+        Grid.SetColumn(rightStack, 2);
+        mainCols.Children.Add(rightStack);
+        contentStack.Children.Add(mainCols);
+
+        // Row 2: Scrubber Progress Bar
+        var progressGrid = new Grid { ColumnSpacing = 8 };
+        progressGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        progressGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        progressGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        progressGrid.Children.Add(new TextBlock
         {
-            Width = 24,
+            Text = session is not null ? _islandVm.Music.FormattedPosition : "2:28",
+            FontSize = 9.5,
+            Foreground = new SolidColorBrush(Color.FromArgb(190, 210, 220, 232))
+        });
+
+        var pct = session is not null && session.DurationSeconds > 0
+            ? Math.Clamp(_islandVm.Music.ProgressPercentage / 100.0, 0.08, 0.96)
+            : 0.62;
+        var seekBar = new Grid { VerticalAlignment = VerticalAlignment.Center, Height = 12 };
+        seekBar.Children.Add(new Border
+        {
             Height = 3,
-            CornerRadius = new CornerRadius(2),
+            CornerRadius = new CornerRadius(1.5),
+            Background = new SolidColorBrush(Color.FromArgb(46, 255, 255, 255))
+        });
+        var fillCols = new Grid();
+        fillCols.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(pct, GridUnitType.Star) });
+        fillCols.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0 - pct, GridUnitType.Star) });
+        var activeTrack = new Border
+        {
+            Height = 3.5,
+            CornerRadius = new CornerRadius(1.75),
+            VerticalAlignment = VerticalAlignment.Center,
             Background = new LinearGradientBrush
             {
                 StartPoint = new Windows.Foundation.Point(0, 0),
@@ -658,70 +1003,63 @@ public sealed partial class SettingsWindow : Window
                     new GradientStop { Color = secondary, Offset = 1 }
                 }
             }
+        };
+        Grid.SetColumn(activeTrack, 0);
+        fillCols.Children.Add(activeTrack);
+        fillCols.Children.Add(new Border
+        {
+            Width = 10,
+            Height = 10,
+            CornerRadius = new CornerRadius(5),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, -5, 0),
+            Background = new SolidColorBrush(secondary)
         });
-        Grid.SetColumn(statusStack, 0);
-        inner.Children.Add(statusStack);
+        seekBar.Children.Add(fillCols);
+        Grid.SetColumn(seekBar, 1);
+        progressGrid.Children.Add(seekBar);
 
-        var centerTitle = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0) };
-        centerTitle.Children.Add(new TextBlock
+        var durText = new TextBlock
         {
-            Text = $"{app.Theme} · Notch Preview",
-            FontSize = 11.5,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Colors.White),
-            TextTrimming = TextTrimming.CharacterEllipsis
-        });
-        centerTitle.Children.Add(new TextBlock
-        {
-            Text = $"{app.Opacity:0}% · R{app.CornerRadius:0} · {app.IslandWidth:0}×{app.IslandHeight:0}",
-            FontSize = 10,
-            Foreground = new SolidColorBrush(Color.FromArgb(200, 210, 220, 230))
-        });
-        Grid.SetColumn(centerTitle, 1);
-        inner.Children.Add(centerTitle);
+            Text = session is not null ? _islandVm.Music.FormattedDuration : "3:42",
+            FontSize = 9.5,
+            Foreground = new SolidColorBrush(Color.FromArgb(190, 210, 220, 232))
+        };
+        Grid.SetColumn(durText, 2);
+        progressGrid.Children.Add(durText);
+        contentStack.Children.Add(progressGrid);
 
-        var barsPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
-        var barIdx = 0;
-        foreach (var h in new[] { 7.0, 13.0, 10.0, 15.0, 8.0 })
+        notchBody.Children.Add(contentStack);
+
+        if (anim.EnergySweep)
         {
-            barsPanel.Children.Add(new Border
+            notchBody.Children.Add(new Border
             {
-                Width = 3,
-                Height = h,
-                CornerRadius = new CornerRadius(1.5),
-                Background = new SolidColorBrush(barIdx % 2 == 0 ? primary : secondary)
-            });
-            barIdx++;
-        }
-        Grid.SetColumn(barsPanel, 2);
-        inner.Children.Add(barsPanel);
-
-        notchBody.Children.Add(inner);
-        notchBody.Children.Add(new Border
-        {
-            Width = 136,
-            Height = 2,
-            CornerRadius = new CornerRadius(1),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(0, 0, 0, 2),
-            Background = new LinearGradientBrush
-            {
-                StartPoint = new Windows.Foundation.Point(0, 0),
-                EndPoint = new Windows.Foundation.Point(1, 0),
-                GradientStops =
+                Width = 200,
+                Height = 2,
+                CornerRadius = new CornerRadius(1),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 2),
+                Background = new LinearGradientBrush
                 {
-                    new GradientStop { Color = Color.FromArgb(0, primary.R, primary.G, primary.B), Offset = 0 },
-                    new GradientStop { Color = Color.FromArgb(220, primary.R, primary.G, primary.B), Offset = 0.35 },
-                    new GradientStop { Color = Color.FromArgb(220, secondary.R, secondary.G, secondary.B), Offset = 0.65 },
-                    new GradientStop { Color = Color.FromArgb(0, secondary.R, secondary.G, secondary.B), Offset = 1 }
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(1, 0),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Color.FromArgb(0, primary.R, primary.G, primary.B), Offset = 0 },
+                        new GradientStop { Color = Color.FromArgb(220, primary.R, primary.G, primary.B), Offset = 0.35 },
+                        new GradientStop { Color = Color.FromArgb(220, secondary.R, secondary.G, secondary.B), Offset = 0.65 },
+                        new GradientStop { Color = Color.FromArgb(0, secondary.R, secondary.G, secondary.B), Offset = 1 }
+                    }
                 }
-            }
-        });
+            });
+        }
 
         var shell = new Border
         {
-            CornerRadius = stealthFlush ? new CornerRadius(0, 0, previewRadius, previewRadius) : new CornerRadius(previewRadius),
+            CornerRadius = notchCorner,
             Background = new SolidColorBrush(surfaceColor),
             BorderBrush = new LinearGradientBrush
             {
@@ -756,7 +1094,7 @@ public sealed partial class SettingsWindow : Window
             assembly.Children.Add(CreateNotchEarPath(isLeft: false, surfaceColor));
         }
 
-        _appearancePreviewHost.Padding = stealthFlush ? new Thickness(0, 0, 0, 12) : new Thickness(0);
+        _appearancePreviewHost.Padding = stealthFlush ? new Thickness(12, 0, 12, 16) : new Thickness(12, 14, 12, 14);
         _appearancePreviewHost.BorderBrush = new SolidColorBrush(Color.FromArgb(85, primary.R, primary.G, primary.B));
         _appearancePreviewHost.Background = new LinearGradientBrush
         {
@@ -865,37 +1203,9 @@ public sealed partial class SettingsWindow : Window
             Foreground = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"]
         });
 
-        var linksPanel = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 0) };
-        linksPanel.Children.Add(new TextBlock
-        {
-            Text = "Developer Profiles & Contact",
-            FontSize = 12.5,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"]
-        });
-        linksPanel.Children.Add(new HyperlinkButton
-        {
-            Content = "1. github.com/iamsubuu",
-            NavigateUri = new Uri("https://github.com/iamsubuu"),
-            Padding = new Thickness(0, 2, 0, 2)
-        });
-        linksPanel.Children.Add(new HyperlinkButton
-        {
-            Content = "2. github.com/ArcSubash",
-            NavigateUri = new Uri("https://github.com/ArcSubash"),
-            Padding = new Thickness(0, 2, 0, 2)
-        });
-        linksPanel.Children.Add(new HyperlinkButton
-        {
-            Content = "Contact dev : lynchkiller0337@gmail.com",
-            NavigateUri = new Uri("mailto:lynchkiller0337@gmail.com"),
-            Padding = new Thickness(0, 2, 0, 2)
-        });
-        stack.Children.Add(linksPanel);
-
         SectionContentHost.Children.Add(new Border
         {
-            Padding = new Thickness(16, 14, 16, 14),
+            Padding = new Thickness(18, 16, 18, 16),
             CornerRadius = new CornerRadius(10),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = (Brush)Application.Current.Resources["WindowCardBrush"],
@@ -903,6 +1213,84 @@ public sealed partial class SettingsWindow : Window
             BorderThickness = new Thickness(1),
             Child = stack
         });
+
+        SectionContentHost.Children.Add(CreateAboutLinkRow(
+            title: "Open Source & Updates",
+            subtitle: "Check for new releases or inspect the DOOM Island repository on GitHub.",
+            glyph: "\uE8A7",
+            linkText: "github.com/iamsubuu/DOOM-Island",
+            uri: new Uri("https://github.com/iamsubuu/DOOM-Island")));
+
+        SectionContentHost.Children.Add(CreateAboutLinkRow(
+            title: "Contact Developer",
+            subtitle: "Direct email support for feedback, feature requests, and bug reports.",
+            glyph: "\uE715",
+            linkText: "lynchkiller0337@gmail.com",
+            uri: new Uri("mailto:lynchkiller0337@gmail.com")));
+    }
+
+    private static Border CreateAboutLinkRow(string title, string subtitle, string glyph, string linkText, Uri uri)
+    {
+        var row = new Grid { ColumnSpacing = 14 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var left = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        left.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 13.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources["WindowTextPrimaryBrush"]
+        });
+        left.Children.Add(new TextBlock
+        {
+            Text = subtitle,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["WindowTextSecondaryBrush"]
+        });
+        Grid.SetColumn(left, 0);
+        row.Children.Add(left);
+
+        var linkContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+        linkContent.Children.Add(new FontIcon
+        {
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            Glyph = glyph,
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["NovaAccentBrush"]
+        });
+        linkContent.Children.Add(new TextBlock
+        {
+            Text = linkText,
+            FontSize = 12.5,
+            FontWeight = FontWeights.Medium,
+            Foreground = (Brush)Application.Current.Resources["NovaAccentBrush"]
+        });
+
+        var linkBtn = new HyperlinkButton
+        {
+            NavigateUri = uri,
+            Padding = new Thickness(12, 6, 12, 6),
+            CornerRadius = new CornerRadius(8),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Content = linkContent
+        };
+        Grid.SetColumn(linkBtn, 1);
+        row.Children.Add(linkBtn);
+
+        return new Border
+        {
+            Padding = new Thickness(16, 12, 16, 12),
+            CornerRadius = new CornerRadius(10),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Background = (Brush)Application.Current.Resources["WindowCardBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["WindowBorderBrush"],
+            BorderThickness = new Thickness(1),
+            Child = row
+        };
     }
 
     private void AddExcludedAppsManager(ClipboardSettings clip)

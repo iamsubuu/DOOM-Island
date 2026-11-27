@@ -18,7 +18,7 @@ public sealed class AppConstantsTests
         Assert.Equal("ArcSubash", AppConstants.PublisherName);
         Assert.Equal("ArcSubash.DOOMIsland-DynamicIsland", AppConstants.StorePackageName);
         Assert.Equal("CN=AAFF5C79-617E-404B-893B-24B04B60D21C", AppConstants.StorePackagePublisher);
-        Assert.Equal("2.4.5", AppConstants.AppVersion);
+        Assert.Equal("2.4.9", AppConstants.AppVersion);
         Assert.Equal("com.doomisland.host", AppConstants.NativeMessagingHostName);
 
         var settings = new AppSettings();
@@ -199,5 +199,131 @@ public sealed class AppConstantsTests
         var zeroG = NOVAIsland.Core.Services.SpringPhysicsConfigMapper.FromPreset(AnimationPreset.ZeroGravity, 1.0, false);
         Assert.False(venomCfg.Instant);
         Assert.True(zeroG.Period > venomCfg.Period);
+    }
+
+    [Fact]
+    public async Task NovaUiDispatcher_MarshalsBackgroundUpdatesOntoDispatcherBeforeMutatingCollections()
+    {
+        var queued = new System.Collections.Concurrent.ConcurrentQueue<Action>();
+        using var scope = NOVAIsland.Core.Services.NovaUiDispatcher.ScopedOverrideForTests(a => queued.Enqueue(a));
+        var bridge = Substitute.For<IBrowserMediaBridge>();
+        bridge.IsConnected.Returns(true);
+        bridge.ActiveSessions.Returns(
+        [
+            new NOVAIsland.Core.Models.BrowserMediaSession
+            {
+                TabId = 1,
+                Title = "Queued Track",
+                Artist = "ArcSubash",
+                PlaybackState = BrowserPlaybackState.Playing
+            }
+        ]);
+
+        var music = new MusicViewModel(bridge);
+        await Task.Run(() => music.SyncFromBridge());
+
+        // Mutation must NOT happen off-thread before UI dispatcher drains queue
+        Assert.Empty(music.BrowserTabs);
+        Assert.NotEmpty(queued);
+
+        while (queued.TryDequeue(out var act))
+        {
+            act();
+        }
+
+        var item = Assert.Single(music.BrowserTabs);
+        Assert.Equal("Queued Track", item.Title);
+    }
+
+    [Fact]
+    public void CompositeBrowserMediaBridge_ResolvesLocalSystemPlayersAndBrowsers()
+    {
+        var spotify = NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.TryResolveMediaIdentity("Spotify.exe");
+        Assert.NotNull(spotify);
+        Assert.Equal("Spotify", spotify!.DisplayName);
+        Assert.False(spotify.IsBrowser);
+
+        var zune = NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.TryResolveMediaIdentity("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic");
+        Assert.NotNull(zune);
+        Assert.Equal("Media Player", zune!.DisplayName);
+        Assert.False(zune.IsBrowser);
+
+        var vlc = NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.TryResolveMediaIdentity(@"C:\Program Files\VideoLAN\VLC\vlc.exe");
+        Assert.NotNull(vlc);
+        Assert.Equal("VLC Media Player", vlc!.DisplayName);
+        Assert.False(vlc.IsBrowser);
+
+        var edge = NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.TryResolveMediaIdentity("MSEdge");
+        Assert.NotNull(edge);
+        Assert.Equal("Microsoft Edge", edge!.DisplayName);
+        Assert.True(edge.IsBrowser);
+
+        Assert.Null(NOVAIsland.Infrastructure.Platform.CompositeBrowserMediaBridge.TryResolveMediaIdentity("DOOMIsland.exe"));
+    }
+
+    [Fact]
+    public async Task LyricsViewModel_CancelsSupersededTrackLoadAndMatchesActiveTrack()
+    {
+        using var scope = NOVAIsland.Core.Services.NovaUiDispatcher.ScopedOverrideForTests(a => a());
+        var bridge = Substitute.For<IBrowserMediaBridge>();
+        var firstDelayTcs = new TaskCompletionSource<LyricsSearchResult?>();
+        var lyricsService = Substitute.For<ILyricsService>();
+
+        lyricsService.GetLyricsAsync("Rathinamo", "Sony Music South", Arg.Any<string?>(), Arg.Any<double>(), true, Arg.Any<CancellationToken>())
+            .Returns(ci => firstDelayTcs.Task.WaitAsync(ci.Arg<CancellationToken>()));
+
+        var secondLyrics = new LyricsSearchResult(
+            Title: "Aachaley",
+            Artist: "Sean Roldan, Mohan Rajan",
+            Album: null,
+            DurationSeconds: 205,
+            Source: LyricsSourceKind.Lrclib,
+            IsSynced: true,
+            IsInstrumental: false,
+            Lines: [new LyricLine(10, "Aachaley line 1")],
+            RawLrc: "[00:10.00]Aachaley line 1");
+        lyricsService.GetLyricsAsync("Aachaley", "Sean Roldan, Mohan Rajan", Arg.Any<string?>(), Arg.Any<double>(), true, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<LyricsSearchResult?>(secondLyrics));
+
+        var music = new MusicViewModel(bridge);
+        var lyrics = new LyricsViewModel(lyricsService, music);
+        NOVAIsland.Core.Models.BrowserMediaSession? changedTo = null;
+        music.TrackChanged += (_, s) => changedTo = s;
+
+        var track1 = new NOVAIsland.Core.Models.BrowserMediaSession
+        {
+            TabId = -1001,
+            Title = "Rathinamo",
+            Artist = "Sony Music South",
+            PlaybackState = BrowserPlaybackState.Playing
+        };
+        bridge.CurrentSession.Returns(track1);
+        bridge.ActiveSessions.Returns([track1]);
+        music.SyncFromBridge();
+        Assert.Same(track1, changedTo);
+
+        var load1 = lyrics.LoadForSessionAsync(track1, allowNetwork: true);
+
+        var track2 = new NOVAIsland.Core.Models.BrowserMediaSession
+        {
+            TabId = -1001,
+            Title = "Aachaley",
+            Artist = "Sean Roldan, Mohan Rajan",
+            PlaybackState = BrowserPlaybackState.Playing
+        };
+        bridge.CurrentSession.Returns(track2);
+        bridge.ActiveSessions.Returns([track2]);
+        music.SyncFromBridge();
+        Assert.Same(track2, changedTo);
+
+        await lyrics.LoadForSessionAsync(track2, allowNetwork: true);
+        firstDelayTcs.TrySetResult(new LyricsSearchResult("Rathinamo", "Sony Music South", null, 180, LyricsSourceKind.Lrclib, true, false, [new LyricLine(1, "Old line")], null));
+        await load1;
+
+        Assert.Equal("Aachaley", lyrics.TrackTitle);
+        Assert.Equal("Sean Roldan, Mohan Rajan", lyrics.ArtistName);
+        var line = Assert.Single(lyrics.Lines);
+        Assert.Equal("Aachaley line 1", line.Text);
+        Assert.False(lyrics.IsLoading);
     }
 }

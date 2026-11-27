@@ -1,7 +1,7 @@
 ; DOOM Island — Inno Setup 6 Installer Script
 #define AppName "DOOM Island"
 #ifndef AppVersion
-#define AppVersion "2.4.5"
+#define AppVersion "2.4.9"
 #endif
 #define AppExeName "DOOMIsland.exe"
 
@@ -10,9 +10,9 @@ AppId={{7B63F9E4-8A4C-4F1D-9B72-2C9E4F5A8D11}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=ArcSubash
-AppPublisherURL=https://github.com/ArcSubash
+AppPublisherURL=https://github.com/iamsubuu/DOOM-Island
 AppSupportURL=mailto:lynchkiller0337@gmail.com
-AppUpdatesURL=https://github.com/iamsubuu
+AppUpdatesURL=https://github.com/iamsubuu/DOOM-Island
 AppContact=lynchkiller0337@gmail.com
 VersionInfoCompany=ArcSubash
 VersionInfoCopyright=Copyright (C) ArcSubash

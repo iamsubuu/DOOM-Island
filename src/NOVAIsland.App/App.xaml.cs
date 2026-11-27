@@ -10,6 +10,7 @@ using NOVAIsland.App.Views.Settings;
 using NOVAIsland.Core.Configuration;
 using NOVAIsland.Core.Enums;
 using NOVAIsland.Core.Interfaces;
+using NOVAIsland.Core.Services;
 using NOVAIsland.Core.ViewModels;
 using NOVAIsland.Infrastructure;
 using NOVAIsland.Infrastructure.Caching;
@@ -107,6 +108,29 @@ public partial class App : Application
         }
 
         _appCts = new CancellationTokenSource();
+        var uiQueue = DispatcherQueue.GetForCurrentThread();
+        NovaUiDispatcher.Initialize(action =>
+        {
+            if (uiQueue is null || _isShuttingDown) return;
+            if (uiQueue.HasThreadAccess)
+            {
+                try { action(); } catch (Exception ex) { TryWriteCrashLog(ex); }
+            }
+            else
+            {
+                try
+                {
+                    uiQueue.TryEnqueue(() =>
+                    {
+                        try { action(); } catch (Exception ex) { TryWriteCrashLog(ex); }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    TryWriteCrashLog(ex);
+                }
+            }
+        });
         var sp = _host.Services;
 
         var settingsVm = sp.GetRequiredService<SettingsViewModel>();
@@ -120,7 +144,7 @@ public partial class App : Application
         var themeManager = sp.GetRequiredService<ThemeManager>();
         themeManager.ApplyAppearance(settingsVm.Settings.Appearance);
         settingsVm.SettingsChanged += (_, _) =>
-            DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() =>
+            SafeUiEnqueue(() =>
             {
                 themeManager.ApplyAppearance(settingsVm.Settings.Appearance);
                 sp.GetRequiredService<TrayHostService>().UpdateTooltip(settingsVm.ResolvedAppName);
@@ -147,39 +171,41 @@ public partial class App : Application
         };
         clipMonitor.Start();
 
-        // Wire real Windows Notifications
+        // Wire real Windows Notifications (marshal ViewModel mutations onto UI thread)
         var notifService = sp.GetRequiredService<INotificationListenerService>();
         notifService.NotificationReceived += (_, item) =>
         {
             islandVm.Notifications.AddOrUpdate(item);
-            _islandWindow?.DispatcherQueue.TryEnqueue(() => _islandWindow.PulseNotification());
+            SafeUiEnqueue(() => _islandWindow?.PulseNotification());
         };
         notifService.NotificationRemoved += (_, nativeId) =>
         {
-            _islandWindow?.DispatcherQueue.TryEnqueue(() => islandVm.Notifications.RemoveByPlatformId(nativeId));
+            islandVm.Notifications.RemoveByPlatformId(nativeId);
         };
 
         // Wire Activity monitor (Screenshots + Downloads)
         var activityMonitor = sp.GetRequiredService<IActivityMonitorService>();
         await activityMonitor.StartAsync(_appCts.Token);
 
-        // Wire Browser Native Messaging Bridge -> Music + Auto-LRCLIB Lyrics
+        // Wire Media Bridge -> MusicViewModel (single source of truth) -> Auto-LRCLIB Lyrics
         var bridge = sp.GetRequiredService<IBrowserMediaBridge>();
         string? lastLyricsTrackKey = null;
-        bridge.StateChanged += async (_, _) =>
+        islandVm.Music.TrackChanged += async (_, session) =>
         {
             try
             {
-                var session = bridge.CurrentSession;
-                var key = session is null ? null : $"{session.Artist}::{session.Title}";
-                if (key != lastLyricsTrackKey)
+                var key = LyricsViewModel.BuildTrackKey(session);
+                if (!string.Equals(key, lastLyricsTrackKey, StringComparison.Ordinal))
                 {
                     lastLyricsTrackKey = key;
-                    await islandVm.Lyrics.LoadForCurrentTrackAsync(!settingsVm.Settings.Privacy.LocalOnlyMode);
                     if (session is not null && islandVm.Mode == IslandMode.Compact && !settingsVm.Settings.General.StealthTopBar)
                     {
-                        _islandWindow?.DispatcherQueue.TryEnqueue(() => islandVm.SetMode(IslandMode.Music));
+                        islandVm.SetMode(IslandMode.Music);
                     }
+                    await islandVm.Lyrics.LoadForSessionAsync(
+                        session,
+                        !settingsVm.Settings.Privacy.LocalOnlyMode,
+                        _appCts?.Token ?? CancellationToken.None);
                 }
             }
             catch (Exception ex)
@@ -190,7 +216,7 @@ public partial class App : Application
         var compositeBridge = sp.GetRequiredService<CompositeBrowserMediaBridge>();
         compositeBridge.ArtworkPaletteChanged += (_, p) =>
         {
-            _islandWindow?.DispatcherQueue.TryEnqueue(() =>
+            SafeUiEnqueue(() =>
             {
                 themeManager.UpdateArtworkPalette(p.R1, p.G1, p.B1, p.R2, p.G2, p.B2);
                 if (settingsVm.Settings.Appearance.Theme == ThemePreset.ArtworkDynamic)
@@ -208,7 +234,8 @@ public partial class App : Application
         {
             if (!_isSessionLocked && settingsVm.Settings.Music.ShowAudioVisualizer && islandVm.Music.IsPlaying)
             {
-                _islandWindow?.DispatcherQueue.TryEnqueue(() => _islandWindow.UpdateSpectrum(bands));
+                var copy = bands.ToArray();
+                SafeUiEnqueue(() => _islandWindow?.UpdateSpectrum(copy));
             }
         };
 
@@ -273,11 +300,11 @@ public partial class App : Application
 
         // Tray & Global Hotkeys & Lock Watcher
         var tray = sp.GetRequiredService<TrayHostService>();
-        tray.OpenDashboardRequested += (_, _) => _islandWindow.DispatcherQueue.TryEnqueue(OpenDashboard);
-        tray.OpenSettingsRequested += (_, _) => _islandWindow.DispatcherQueue.TryEnqueue(() => OpenSettings(SettingsSectionId.General));
-        tray.OpenFullscreenLyricsRequested += (_, _) => _islandWindow.DispatcherQueue.TryEnqueue(OpenFullscreenLyrics);
-        tray.SwitchModeRequested += (_, mode) => _islandWindow.DispatcherQueue.TryEnqueue(() => islandVm.SetMode(mode));
-        tray.ToggleIslandVisibilityRequested += (_, _) => _islandWindow.DispatcherQueue.TryEnqueue(async () =>
+        tray.OpenDashboardRequested += (_, _) => SafeUiEnqueue(OpenDashboard);
+        tray.OpenSettingsRequested += (_, _) => SafeUiEnqueue(() => OpenSettings(SettingsSectionId.General));
+        tray.OpenFullscreenLyricsRequested += (_, _) => SafeUiEnqueue(OpenFullscreenLyrics);
+        tray.SwitchModeRequested += (_, mode) => SafeUiEnqueue(() => islandVm.SetMode(mode));
+        tray.ToggleIslandVisibilityRequested += (_, _) => SafeUiEnqueueAsync(async () =>
         {
             settingsVm.Settings.General.IslandEnabled = !settingsVm.Settings.General.IslandEnabled;
             await settingsVm.SaveAsync();
@@ -293,7 +320,7 @@ public partial class App : Application
         }
 
         var hotkeys = sp.GetRequiredService<IHotkeyService>();
-        hotkeys.ShortcutTriggered += (_, action) => _islandWindow.DispatcherQueue.TryEnqueue(async () =>
+        hotkeys.ShortcutTriggered += (_, action) => SafeUiEnqueueAsync(async () =>
         {
             switch (action)
             {
@@ -302,7 +329,10 @@ public partial class App : Application
                 case ShortcutAction.OpenLyrics:
                 case ShortcutAction.OpenClipboard:
                 case ShortcutAction.OpenTimer:
-                    await _islandWindow.HandleShortcutAsync(action);
+                    if (_islandWindow is not null)
+                    {
+                        await _islandWindow.HandleShortcutAsync(action);
+                    }
                     break;
                 case ShortcutAction.OpenDashboard:
                     OpenDashboard();
@@ -322,7 +352,7 @@ public partial class App : Application
         {
             _isSessionLocked = locked;
             SyncVisualizerPowerState();
-            _islandWindow?.DispatcherQueue.TryEnqueue(() => _islandWindow.SetSessionLocked(locked));
+            SafeUiEnqueue(() => _islandWindow?.SetSessionLocked(locked));
         };
         lockWatcher.Start();
 
@@ -363,11 +393,37 @@ public partial class App : Application
         }
     }
 
+    private void SafeUiEnqueue(Action action)
+    {
+        if (_isShuttingDown || _islandWindow is null) return;
+        try
+        {
+            _islandWindow.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_isShuttingDown) return;
+                try { action(); } catch (Exception ex) { TryWriteCrashLog(ex); }
+            });
+        }
+        catch (Exception ex)
+        {
+            TryWriteCrashLog(ex);
+        }
+    }
+
+    private void SafeUiEnqueueAsync(Func<Task> action)
+    {
+        SafeUiEnqueue(async () =>
+        {
+            try { await action(); } catch (Exception ex) { TryWriteCrashLog(ex); }
+        });
+    }
+
     private void StartBackgroundLoops(IslandViewModel islandVm, SettingsViewModel settingsVm, CancellationToken ct)
     {
         var dq = _islandWindow!.DispatcherQueue;
         var lastSecondTicks = Environment.TickCount64;
         var lastSystemRefreshTicks = Environment.TickCount64;
+        var lastWatchdogTicks = Environment.TickCount64;
         var wasSystemPanelActive = false;
 
         _ = Task.Run(async () =>
@@ -394,7 +450,8 @@ public partial class App : Application
                         lastSecondTicks = now;
                     }
 
-                    if (stopwatchRunning || islandVm.Music.IsPlaying || (elapsedSecond && oneSecondTimerRunning))
+                    var clockVisible = !_isSessionLocked && islandVm.Mode == IslandMode.Expanded;
+                    if (stopwatchRunning || islandVm.Music.IsPlaying || (elapsedSecond && (oneSecondTimerRunning || clockVisible)))
                     {
                         dq.TryEnqueue(() =>
                         {
@@ -409,9 +466,16 @@ public partial class App : Application
                                     islandVm.Music.AdvancePlaybackByClock();
                                     islandVm.Lyrics.UpdateActiveLine(islandVm.Music.LivePositionSeconds);
                                 }
-                                if (elapsedSecond && oneSecondTimerRunning)
+                                if (elapsedSecond)
                                 {
-                                    islandVm.Timer.TickOneSecond();
+                                    if (oneSecondTimerRunning)
+                                    {
+                                        islandVm.Timer.TickOneSecond();
+                                    }
+                                    if (clockVisible)
+                                    {
+                                        _islandWindow?.UpdateClock();
+                                    }
                                 }
                             }
                             catch (Exception ex)
@@ -432,6 +496,12 @@ public partial class App : Application
                         await islandVm.System.RefreshAsync(ct);
                     }
                     wasSystemPanelActive = systemUiVisible;
+
+                    if (now - lastWatchdogTicks >= 5000 && !_isSessionLocked)
+                    {
+                        lastWatchdogTicks = now;
+                        SafeUiEnqueue(() => _islandWindow?.EnsureStealthVisibleAndTopmost());
+                    }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -552,6 +622,7 @@ public partial class App : Application
     private void Shutdown()
     {
         _isShuttingDown = true;
+        NovaUiDispatcher.Reset();
         _appCts?.Cancel();
         _showDashboardWait?.Unregister(null);
         _showDashboardWait = null;

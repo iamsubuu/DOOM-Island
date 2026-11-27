@@ -188,7 +188,7 @@ internal sealed class SetupForm : Form
 
         var footerLabel = new Label
         {
-            Text = $"© {InstallerEngine.PublisherName} · github.com/ArcSubash",
+            Text = $"© {InstallerEngine.PublisherName} · github.com/iamsubuu/DOOM-Island",
             ForeColor = Color.FromArgb(120, 126, 144),
             Location = new Point(26, 374),
             AutoSize = true

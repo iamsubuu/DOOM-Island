@@ -19,11 +19,12 @@ public sealed partial class MusicPanelView : UserControl
     private LyricsViewModel? _lyrics;
     private bool _updatingUi;
     private string? _lastArtworkUri;
+    private DateTime _lastCalendarDate = DateTime.MinValue;
 
     public MusicPanelView()
     {
         InitializeComponent();
-        BuildCalendarStrip();
+        UpdateClock();
     }
 
     public void Bind(MusicViewModel music, SystemViewModel system, IslandViewModel island, LyricsViewModel lyrics)
@@ -53,10 +54,21 @@ public sealed partial class MusicPanelView : UserControl
 
     public void UpdateSpectrum(ReadOnlySpan<float> bands) => Equalizer.UpdateSpectrum(bands);
 
-    private void BuildCalendarStrip()
+    public void UpdateClock()
     {
-        var today = DateTime.Now;
-        CalendarMonthText.Text = today.ToString("MMM");
+        var now = DateTime.Now;
+        ExactTimeText.Text = now.ToString("hh:mm:ss tt");
+        if (now.Date != _lastCalendarDate)
+        {
+            BuildCalendarStrip(now);
+        }
+    }
+
+    private void BuildCalendarStrip(DateTime? referenceNow = null)
+    {
+        var today = (referenceNow ?? DateTime.Now).Date;
+        _lastCalendarDate = today;
+        CalendarMonthText.Text = today.ToString("MMM d");
         WeekDaysStrip.Children.Clear();
 
         for (var offset = -2; offset <= 3; offset++)
@@ -125,6 +137,7 @@ public sealed partial class MusicPanelView : UserControl
 
     public void Refresh()
     {
+        UpdateClock();
         if (_music is null) return;
         _updatingUi = true;
         try

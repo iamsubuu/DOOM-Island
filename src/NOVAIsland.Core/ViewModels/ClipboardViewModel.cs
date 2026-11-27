@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using NOVAIsland.Core.Enums;
 using NOVAIsland.Core.Interfaces;
 using NOVAIsland.Core.Models;
+using NOVAIsland.Core.Services;
 
 namespace NOVAIsland.Core.ViewModels;
 
@@ -52,9 +53,12 @@ public sealed partial class ClipboardViewModel : ObservableObject
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         var items = await _repository.GetAllAsync(cancellationToken);
-        _allItems.Clear();
-        _allItems.AddRange(items);
-        RebuildFiltered();
+        NovaUiDispatcher.Post(() =>
+        {
+            _allItems.Clear();
+            _allItems.AddRange(items);
+            RebuildFiltered();
+        });
     }
 
     public async Task RecordCapturedItemAsync(ClipboardItem item, int historyLimit, CancellationToken cancellationToken = default)

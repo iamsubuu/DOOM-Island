@@ -19,7 +19,10 @@ public sealed partial class LyricsPanelView : UserControl
     private SettingsViewModel? _settings;
     private string? _lastArtworkUri;
     private string _renderedLinesSignature = string.Empty;
+    private string _lastSearchSeedTrackKey = string.Empty;
     private readonly List<TextBlock> _lineTextBlocks = [];
+
+    public event EventHandler<TextBox>? TextInputRequested;
 
     public LyricsPanelView()
     {
@@ -262,9 +265,20 @@ public sealed partial class LyricsPanelView : UserControl
     {
         if (_lyrics is null) return;
         _lyrics.IsSearchOpen = !_lyrics.IsSearchOpen;
-        if (_lyrics.IsSearchOpen && string.IsNullOrWhiteSpace(SearchInput.Text))
+        if (_lyrics.IsSearchOpen)
         {
-            SearchInput.Text = $"{_lyrics.TrackTitle} {_lyrics.ArtistName}".Trim();
+            var currentKey = LyricsViewModel.BuildTrackKey(_music?.CurrentSession);
+            if (string.IsNullOrWhiteSpace(SearchInput.Text) ||
+                !string.Equals(_lastSearchSeedTrackKey, currentKey, StringComparison.Ordinal))
+            {
+                _lastSearchSeedTrackKey = currentKey;
+                SearchInput.Text = $"{_lyrics.TrackTitle} {_lyrics.ArtistName}".Trim();
+            }
+
+            SearchPanel.Visibility = Visibility.Visible;
+            LyricsScrollViewer.Visibility = Visibility.Collapsed;
+            SearchToggleLabel.Text = "Close Search";
+            TextInputRequested?.Invoke(this, SearchInput);
         }
     }
 
@@ -272,7 +286,14 @@ public sealed partial class LyricsPanelView : UserControl
 
     private async void OnSearchKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == VirtualKey.Enter) await RunSearchAsync();
+        if (e.Key == VirtualKey.Enter)
+        {
+            await RunSearchAsync();
+        }
+        else if (e.Key == VirtualKey.Escape && _lyrics is not null && _lyrics.IsSearchOpen)
+        {
+            _lyrics.IsSearchOpen = false;
+        }
     }
 
     private async Task RunSearchAsync()

@@ -97,8 +97,8 @@
                         Background="#02000000">
                         <Border
                             x:Name="StealthHoverLine"
-                            Width="96"
-                            Height="3"
+                            Width="108"
+                            Height="4"
                             CornerRadius="0,0,4,4"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Top"

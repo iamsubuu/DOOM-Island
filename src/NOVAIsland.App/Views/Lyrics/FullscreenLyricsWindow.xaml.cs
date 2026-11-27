@@ -21,6 +21,7 @@ public sealed partial class FullscreenLyricsWindow : Window
     private string? _lastArtworkUri;
     private string _renderedLinesSignature = string.Empty;
     private readonly List<TextBlock> _lineTextBlocks = [];
+    private bool _isClosed;
 
     public FullscreenLyricsWindow(LyricsViewModel lyrics, MusicViewModel music, SettingsViewModel settings)
     {
@@ -39,29 +40,49 @@ public sealed partial class FullscreenLyricsWindow : Window
         Services.WindowIconHelper.TryApply(hwnd, appWindow);
         appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
 
-        _lyrics.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        void OnLyricsChanged(object? s, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(LyricsViewModel.ActiveLineIndex))
+            if (_isClosed) return;
+            DispatcherQueue.TryEnqueue(() =>
             {
-                UpdateLineHighlightsInPlace();
-                ScrollActiveLineIntoCenter();
-            }
-            else
-            {
-                RefreshLyrics();
-            }
-        });
-        _music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+                if (_isClosed) return;
+                if (e.PropertyName == nameof(LyricsViewModel.ActiveLineIndex))
+                {
+                    UpdateLineHighlightsInPlace();
+                    ScrollActiveLineIntoCenter();
+                }
+                else
+                {
+                    RefreshLyrics();
+                }
+            });
+        }
+
+        void OnMusicChanged(object? s, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+            if (_isClosed) return;
+            DispatcherQueue.TryEnqueue(() =>
             {
-                RefreshTimelineOnly();
-            }
-            else
-            {
-                RefreshTrack();
-            }
-        });
+                if (_isClosed) return;
+                if (e.PropertyName == nameof(MusicViewModel.LivePositionSeconds))
+                {
+                    RefreshTimelineOnly();
+                }
+                else
+                {
+                    RefreshTrack();
+                }
+            });
+        }
+
+        _lyrics.PropertyChanged += OnLyricsChanged;
+        _music.PropertyChanged += OnMusicChanged;
+        Closed += (_, _) =>
+        {
+            _isClosed = true;
+            _lyrics.PropertyChanged -= OnLyricsChanged;
+            _music.PropertyChanged -= OnMusicChanged;
+        };
 
         RefreshTrack();
         RefreshLyrics();

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using NOVAIsland.Core.Enums;
 using NOVAIsland.Core.Interfaces;
 using NOVAIsland.Core.Models;
+using NOVAIsland.Core.Services;
 
 namespace NOVAIsland.Core.ViewModels;
 
@@ -37,23 +38,31 @@ public sealed partial class NotificationsViewModel : ObservableObject
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _listener.InitializeAsync(cancellationToken);
-        HasPermission = _listener.HasPermission;
-        StatusMessage = _listener.StatusMessage;
+        var hasPerm = _listener.HasPermission;
+        var statusMsg = _listener.StatusMessage;
+        var existing = hasPerm ? await _listener.GetActiveAsync(cancellationToken) : [];
 
-        if (HasPermission)
+        NovaUiDispatcher.Post(() =>
         {
-            var existing = await _listener.GetActiveAsync(cancellationToken);
-            _items.Clear();
-            _items.AddRange(existing);
-            RebuildVisible();
-        }
+            HasPermission = hasPerm;
+            StatusMessage = statusMsg;
+            if (hasPerm)
+            {
+                _items.Clear();
+                _items.AddRange(existing);
+                RebuildVisible();
+            }
+        });
     }
 
     public void AddOrUpdate(NotificationItem item)
     {
-        _items.RemoveAll(n => n.Id == item.Id);
-        _items.Insert(0, item);
-        RebuildVisible();
+        NovaUiDispatcher.Post(() =>
+        {
+            _items.RemoveAll(n => n.Id == item.Id);
+            _items.Insert(0, item);
+            RebuildVisible();
+        });
     }
 
     [RelayCommand]
@@ -99,10 +108,13 @@ public sealed partial class NotificationsViewModel : ObservableObject
 
     public void RemoveByPlatformId(uint nativeId)
     {
-        if (_items.RemoveAll(n => n.PlatformNotificationId == nativeId) > 0)
+        NovaUiDispatcher.Post(() =>
         {
-            RebuildVisible();
-        }
+            if (_items.RemoveAll(n => n.PlatformNotificationId == nativeId) > 0)
+            {
+                RebuildVisible();
+            }
+        });
     }
 
     private void RebuildVisible()
@@ -151,7 +163,8 @@ public sealed partial class SystemViewModel : ObservableObject
 
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        Metrics = await _systemService.CaptureMetricsAsync(cancellationToken);
+        var captured = await _systemService.CaptureMetricsAsync(cancellationToken);
+        NovaUiDispatcher.Post(() => Metrics = captured);
     }
 
     public Task SetVolumeAsync(int volumePercent, bool muted) =>
@@ -190,12 +203,16 @@ public sealed partial class ActivityViewModel : ObservableObject
 
     public void Apply(IReadOnlyList<ActivityItem> items)
     {
-        Items.Clear();
-        foreach (var item in items)
+        var snapshot = items.ToList();
+        NovaUiDispatcher.Post(() =>
         {
-            Items.Add(item);
-        }
-        ActiveCount = items.Count(a => a.Status == ActivityStatus.Active);
+            Items.Clear();
+            foreach (var item in snapshot)
+            {
+                Items.Add(item);
+            }
+            ActiveCount = snapshot.Count(a => a.Status == ActivityStatus.Active);
+        });
     }
 
     [RelayCommand]

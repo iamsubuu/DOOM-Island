@@ -44,6 +44,7 @@ public sealed partial class DynamicIslandWindow : Window
     private int _lastHostWidth;
     private int _lastHostHeight;
     private bool? _lastFlushTop;
+    private bool? _lastNoActivate;
     private DateTime _hoverOpenCommitUntilUtc = DateTime.MinValue;
     private CancellationTokenSource? _retractCts;
 
@@ -96,11 +97,13 @@ public sealed partial class DynamicIslandWindow : Window
 
         MusicPanel.Bind(_island.Music, _island.System, _island, _island.Lyrics);
         LyricsPanel.Bind(_island.Lyrics, _island.Music, _settings);
+        LyricsPanel.TextInputRequested += (_, tb) => FocusTextInput(tb);
         ClipboardPanel.Bind(_island.Clipboard);
         NotificationsPanel.Bind(_island.Notifications, _settings);
         TimerPanel.Bind(_island.Timer);
         SystemPanel.Bind(_island.System);
         ActivityPanel.Bind(_island.Activity);
+        RootHost.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnRootHostPointerPressed), handledEventsToo: true);
 
         _island.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RenderState);
         _island.Music.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() => RenderMusicSummary(e.PropertyName));
@@ -126,7 +129,42 @@ public sealed partial class DynamicIslandWindow : Window
         _isSessionLocked = isLocked;
         _lastEnergyRunning = null;
         _lastIdleBreathing = null;
+        if (!isLocked)
+        {
+            _lastHostWidth = 0;
+            _lastHostHeight = 0;
+            _positioner.ResetBoundsCache();
+        }
         ApplySettingsAndReposition();
+    }
+
+    public void EnsureStealthVisibleAndTopmost()
+    {
+        if (_isSessionLocked || _hwnd == IntPtr.Zero || !_settings.Settings.General.IslandEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!Win32Interop.IsWindowVisible(_hwnd))
+            {
+                _lastIslandShown = null;
+                _lastHostWidth = 0;
+                _positioner.ResetBoundsCache();
+                ApplySettingsAndReposition();
+            }
+            else if (_settings.Settings.General.AlwaysOnTop)
+            {
+                _positioner.EnsureTopmost();
+            }
+
+            if (!_island.IsExpanded && !_isRetracting)
+            {
+                _animator.RestoreShellImmediate(NotchAssembly);
+            }
+        }
+        catch { }
     }
 
     public async Task HandleShortcutAsync(ShortcutAction action)
@@ -168,6 +206,14 @@ public sealed partial class DynamicIslandWindow : Window
         MusicPanel.UpdateSpectrum(bands);
     }
 
+    public void UpdateClock()
+    {
+        if (_island.Mode == IslandMode.Expanded)
+        {
+            MusicPanel.UpdateClock();
+        }
+    }
+
     public void PulseNotification() =>
         _animator.PulseNotificationArrival(NotchAssembly, _settings.Settings.Animation);
 
@@ -204,6 +250,7 @@ public sealed partial class DynamicIslandWindow : Window
         var exStyle = Win32Interop.GetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE).ToInt64();
         exStyle |= Win32Interop.WS_EX_LAYERED | Win32Interop.WS_EX_TOOLWINDOW | Win32Interop.WS_EX_NOACTIVATE;
         Win32Interop.SetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE, new IntPtr(exStyle));
+        _lastNoActivate = true;
 
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
@@ -217,47 +264,170 @@ public sealed partial class DynamicIslandWindow : Window
             Win32Interop.SWP_NOMOVE | Win32Interop.SWP_NOSIZE | Win32Interop.SWP_NOACTIVATE | Win32Interop.SWP_FRAMECHANGED);
     }
 
+    private void SetWindowNoActivate(bool noActivate)
+    {
+        if (_hwnd == IntPtr.Zero || _lastNoActivate == noActivate)
+        {
+            return;
+        }
+
+        _lastNoActivate = noActivate;
+        var exStyle = Win32Interop.GetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE).ToInt64();
+        exStyle = noActivate
+            ? (exStyle | Win32Interop.WS_EX_NOACTIVATE)
+            : (exStyle & ~Win32Interop.WS_EX_NOACTIVATE);
+        Win32Interop.SetWindowLongPtr(_hwnd, Win32Interop.GWL_EXSTYLE, new IntPtr(exStyle));
+        Win32Interop.SetWindowPos(
+            _hwnd,
+            Win32Interop.HWND_TOPMOST,
+            0, 0, 0, 0,
+            Win32Interop.SWP_NOMOVE | Win32Interop.SWP_NOSIZE | Win32Interop.SWP_NOZORDER | Win32Interop.SWP_NOACTIVATE | Win32Interop.SWP_FRAMECHANGED);
+    }
+
+    public void FocusTextInput(TextBox input)
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        SetWindowNoActivate(noActivate: false);
+        _hoverTrackTimer.Stop();
+        _hoverCloseTimer.Stop();
+        _autoCollapseTimer.Stop();
+
+        Win32Interop.SetForegroundWindow(_hwnd);
+        input.Focus(FocusState.Programmatic);
+        input.SelectAll();
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_hwnd != IntPtr.Zero && input.Visibility == Visibility.Visible)
+            {
+                Win32Interop.SetForegroundWindow(_hwnd);
+                input.Focus(FocusState.Programmatic);
+            }
+        });
+    }
+
+    private void OnRootHostPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (FindAncestorTextBox(e.OriginalSource as DependencyObject) is { } tb)
+        {
+            SetWindowNoActivate(noActivate: false);
+            Win32Interop.SetForegroundWindow(_hwnd);
+            tb.Focus(FocusState.Pointer);
+        }
+    }
+
+    private bool IsCursorOverTextBox()
+    {
+        if (_hwnd == IntPtr.Zero || RootHost.XamlRoot is null || !Win32Interop.GetCursorPos(out var pt))
+        {
+            return false;
+        }
+
+        if (!Win32Interop.ScreenToClient(_hwnd, ref pt))
+        {
+            return false;
+        }
+
+        var scale = RootHost.XamlRoot.RasterizationScale;
+        if (scale <= 0)
+        {
+            scale = Math.Max(96u, Win32Interop.GetDpiForWindow(_hwnd)) / 96.0;
+        }
+
+        var dipPoint = new Windows.Foundation.Point(pt.X / scale, pt.Y / scale);
+        foreach (var element in VisualTreeHelper.FindElementsInHostCoordinates(dipPoint, RootHost, includeAllElements: true))
+        {
+            if (FindAncestorTextBox(element) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static TextBox? FindAncestorTextBox(DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (node is TextBox tb)
+            {
+                return tb;
+            }
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return null;
+    }
+
     private IntPtr CustomWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
-        if (msg == 0x0010 /* WM_CLOSE */ && !_allowShutdownClose)
+        try
         {
-            return IntPtr.Zero;
-        }
-
-        if (msg == Win32Interop.WM_NCCALCSIZE && wParam != IntPtr.Zero)
-        {
-            return IntPtr.Zero;
-        }
-
-        if (msg == Win32Interop.WM_GETMINMAXINFO && lParam != IntPtr.Zero)
-        {
-            var mmi = Marshal.PtrToStructure<Win32Interop.MINMAXINFO>(lParam);
-            mmi.ptMinTrackSize = new Win32Interop.POINT { X = 1, Y = 1 };
-            Marshal.StructureToPtr(mmi, lParam, false);
-            return IntPtr.Zero;
-        }
-
-        if (msg == Win32Interop.WM_NCHITTEST)
-        {
-            var x = (short)(lParam.ToInt64() & 0xFFFF);
-            var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-            var pt = new Win32Interop.POINT { X = x, Y = y };
-            Win32Interop.ScreenToClient(hWnd, ref pt);
-
-            var dpi = Math.Max(96u, Win32Interop.GetDpiForWindow(hWnd));
-            var scale = dpi / 96.0;
-            var dipX = pt.X / scale;
-            var dipY = pt.Y / scale;
-
-            var stealth = _island.Mode == IslandMode.Compact && _settings.Settings.General.StealthTopBar;
-            var hitWidth = NotchAssembly.ActualWidth > 0 ? NotchAssembly.ActualWidth : PillShell.Width;
-            var hitHeight = NotchAssembly.ActualHeight > 0 ? NotchAssembly.ActualHeight : (stealth ? 10 : 40);
-            var left = (RootHost.ActualWidth - hitWidth) / 2.0;
-
-            if (dipX < left || dipX > left + hitWidth || dipY < 0 || dipY > hitHeight)
+            if (msg == 0x0010 /* WM_CLOSE */ && !_allowShutdownClose)
             {
-                return Win32Interop.HTTRANSPARENT;
+                return IntPtr.Zero;
             }
+
+            if (msg == Win32Interop.WM_MOUSEACTIVATE)
+            {
+                if (_island.IsExpanded && (IsCursorOverTextBox() || IsTextBoxFocused()))
+                {
+                    return new IntPtr(Win32Interop.MA_ACTIVATE);
+                }
+                return new IntPtr(Win32Interop.MA_NOACTIVATE);
+            }
+
+            if (msg is 0x007E /* WM_DISPLAYCHANGE */ or 0x02E0 /* WM_DPICHANGED */)
+            {
+                _lastHostWidth = 0;
+                _lastHostHeight = 0;
+                _positioner.ResetBoundsCache();
+                DispatcherQueue.TryEnqueue(ApplySettingsAndReposition);
+            }
+
+            if (msg == Win32Interop.WM_NCCALCSIZE && wParam != IntPtr.Zero)
+            {
+                return IntPtr.Zero;
+            }
+
+            if (msg == Win32Interop.WM_GETMINMAXINFO && lParam != IntPtr.Zero)
+            {
+                var mmi = Marshal.PtrToStructure<Win32Interop.MINMAXINFO>(lParam);
+                mmi.ptMinTrackSize = new Win32Interop.POINT { X = 1, Y = 1 };
+                Marshal.StructureToPtr(mmi, lParam, false);
+                return IntPtr.Zero;
+            }
+
+            if (msg == Win32Interop.WM_NCHITTEST)
+            {
+                var x = (short)(lParam.ToInt64() & 0xFFFF);
+                var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                var pt = new Win32Interop.POINT { X = x, Y = y };
+                Win32Interop.ScreenToClient(hWnd, ref pt);
+
+                var dpi = Math.Max(96u, Win32Interop.GetDpiForWindow(hWnd));
+                var scale = dpi / 96.0;
+                var dipX = pt.X / scale;
+                var dipY = pt.Y / scale;
+
+                var stealth = _island.Mode == IslandMode.Compact && _settings.Settings.General.StealthTopBar;
+                var hitWidth = NotchAssembly.ActualWidth > 0 ? NotchAssembly.ActualWidth : PillShell.Width;
+                var hitHeight = NotchAssembly.ActualHeight > 0 ? NotchAssembly.ActualHeight : (stealth ? 10 : 40);
+                var left = (RootHost.ActualWidth - hitWidth) / 2.0;
+
+                if (dipX < left || dipX > left + hitWidth || dipY < 0 || dipY > hitHeight)
+                {
+                    return Win32Interop.HTTRANSPARENT;
+                }
+            }
+        }
+        catch
+        {
+            // Never allow unhandled WndProc exceptions to crash the CoreMessaging dispatcher
         }
 
         return Win32Interop.CallWindowProc(_prevWndProc, hWnd, msg, wParam, lParam);
@@ -441,10 +611,15 @@ public sealed partial class DynamicIslandWindow : Window
         ActivityPanel.Visibility = _island.Mode == IslandMode.Activity ? Visibility.Visible : Visibility.Collapsed;
 
         ApplySettingsAndReposition();
+        SetWindowNoActivate(!_island.IsExpanded);
         HighlightActiveTab();
 
         if (_island.IsExpanded)
         {
+            if (_island.Mode == IslandMode.Expanded)
+            {
+                MusicPanel.UpdateClock();
+            }
             NotchAssembly.UpdateLayout();
             RepositionForActualShellSize();
             if (!_wasExpanded)
