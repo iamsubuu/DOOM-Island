@@ -42,17 +42,6 @@ Download the latest release from the **[GitHub Releases](https://github.com/iams
 2. Run the installer (GUI wizard, or silent install with `/SILENT /NOLAUNCH /DIR="<path>"`).
 3. It installs DOOM Island, creates Start Menu/Desktop shortcuts, registers Add/Remove Programs uninstall support, and configures Native Messaging for Chrome, Edge, and Opera.
 
-### Option 2 — MSIX Package (Enables Windows Notifications Listener)
-1. Download `DOOMIsland-x64-v<version>.msix` (or install from **Microsoft Store** as **DOOM Island - Dynamic Island**).
-2. For local sideloading from GitHub Releases, download `DOOMIsland-CodeSigning.cer` and `Install-DOOMIsland-MSIX.ps1` into the same folder and run:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\Install-DOOMIsland-MSIX.ps1
-   ```
-   *(Installing via MSIX grants Windows Package Identity, enabling third-party Windows toast notifications via `UserNotificationListener`.)*
-
-### Option 3 — Portable ZIP
-1. Download `DOOMIsland-Win64-Portable-v<version>.zip`.
-2. Extract anywhere and run `app\DOOMIsland.exe`, or run `Install-DOOMIsland.ps1` to install and register shortcuts + Native Messaging.
 
 ### Optional: Browser Extension for Multi-Tab Control
 Basic Chrome, Edge, and Opera media sync works **automatically** out of the box via Windows SMTC. If you also want multi-tab switching and **Focus Tab** support:
