@@ -1,3 +1,5 @@
+<img width="64" height="64" alt="Square44x44Logo targetsize-64" src="https://github.com/user-attachments/assets/4dfaf2a3-5dfe-4b0a-bc4a-aaf2e01e6654" />
+
 # DOOM Island
 
 **A native Windows 10/11 Dynamic Island overlay built with C#, .NET 10, and WinUI 3.**
