@@ -40,6 +40,7 @@ Download the latest release from the **[GitHub Releases](https://github.com/iams
 ### Standalone Windows Installer (Recommended for Direct Download)
 1. Download `DOOMIsland-Setup-x64-v<version>.exe`.
 2. Run the installer (GUI wizard, or silent install with `/SILENT /NOLAUNCH /DIR="<path>"`).
+If SmartScreen appears, click **More info** → **Run anyway**."
 3. It installs DOOM Island, creates Start Menu/Desktop shortcuts, registers Add/Remove Programs uninstall support, and configures Native Messaging for Chrome, Edge, and Opera.
 
 
