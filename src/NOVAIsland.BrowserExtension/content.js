@@ -280,6 +280,7 @@
 
   function safeSend(msg) {
     try {
+      if (!chrome.runtime?.id) return;
       chrome.runtime.sendMessage(msg).catch(() => {});
     } catch {
       // Extension context invalidated during reload

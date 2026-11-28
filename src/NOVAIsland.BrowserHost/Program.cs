@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using NOVAIsland.Core.Configuration;
 using NOVAIsland.Core.Protocol;
 
@@ -38,8 +39,15 @@ internal static class Program
         var pipeName = pipeArg is not null && pipeArg.Length > 7
             ? pipeArg[7..]
             : Environment.GetEnvironmentVariable("DOOMISLAND_PIPE") ?? PipeIdentityHelper.GetUserPipeName();
-        NamedPipeClientStream? activePipe = null;
-        var pipeWriteLock = new SemaphoreSlim(1, 1);
+
+        // Buffer outbound envelopes until the Named Pipe connects so startup browser_connected/media_detected frames are never dropped.
+        var outboundChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(256)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = true
+        });
+        string? pendingRetryLine = null;
 
         // Background task maintaining Named Pipe connection to DOOM Island desktop app
         var pipeLoop = Task.Run(async () =>
@@ -50,26 +58,47 @@ internal static class Program
                 {
                     using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
                     await client.ConnectAsync(2000, cts.Token);
-                    activePipe = client;
 
-                    using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-                    while (client.IsConnected && !cts.IsCancellationRequested)
+                    using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                    var pipeReadTask = Task.Run(async () =>
                     {
-                        var line = await reader.ReadLineAsync(cts.Token);
-                        if (line is null) break;
-
-                        var env = JsonSerializer.Deserialize<NativeMessageEnvelope>(line, NativeMessageTypes.JsonOptions);
-                        if (env is null || string.IsNullOrWhiteSpace(env.Type)) continue;
-
-                        await stdoutLock.WaitAsync(cts.Token);
-                        try
+                        using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
+                        while (client.IsConnected && !readCts.IsCancellationRequested)
                         {
-                            await NativeMessagingFramer.WriteAsync(stdout, env, cts.Token);
+                            var line = await reader.ReadLineAsync(readCts.Token);
+                            if (line is null) break;
+
+                            var env = JsonSerializer.Deserialize<NativeMessageEnvelope>(line, NativeMessageTypes.JsonOptions);
+                            if (env is null || string.IsNullOrWhiteSpace(env.Type)) continue;
+
+                            await stdoutLock.WaitAsync(readCts.Token);
+                            try
+                            {
+                                await NativeMessagingFramer.WriteAsync(stdout, env, readCts.Token);
+                            }
+                            finally
+                            {
+                                stdoutLock.Release();
+                            }
                         }
-                        finally
+                    }, readCts.Token);
+
+                    try
+                    {
+                        while (client.IsConnected && !cts.IsCancellationRequested)
                         {
-                            stdoutLock.Release();
+                            var line = pendingRetryLine ?? await outboundChannel.Reader.ReadAsync(cts.Token);
+                            pendingRetryLine = line;
+                            var bytes = Encoding.UTF8.GetBytes(line);
+                            await client.WriteAsync(bytes, cts.Token);
+                            await client.FlushAsync(cts.Token);
+                            pendingRetryLine = null;
                         }
+                    }
+                    finally
+                    {
+                        await readCts.CancelAsync();
+                        await pipeReadTask.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                     }
                 }
                 catch (OperationCanceledException)
@@ -78,12 +107,7 @@ internal static class Program
                 }
                 catch
                 {
-                    activePipe = null;
-                    await Task.Delay(1500, cts.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-                }
-                finally
-                {
-                    activePipe = null;
+                    await Task.Delay(500, cts.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 }
             }
         }, cts.Token);
@@ -99,26 +123,8 @@ internal static class Program
                     break; // Browser disconnected
                 }
 
-                var pipe = activePipe;
-                if (pipe is { IsConnected: true })
-                {
-                    var line = JsonSerializer.Serialize(envelope, NativeMessageTypes.JsonOptions) + "\n";
-                    var bytes = Encoding.UTF8.GetBytes(line);
-                    await pipeWriteLock.WaitAsync(cts.Token);
-                    try
-                    {
-                        await pipe.WriteAsync(bytes, cts.Token);
-                        await pipe.FlushAsync(cts.Token);
-                    }
-                    catch
-                    {
-                        // Pipe reconnect loop will recover
-                    }
-                    finally
-                    {
-                        pipeWriteLock.Release();
-                    }
-                }
+                var line = JsonSerializer.Serialize(envelope, NativeMessageTypes.JsonOptions) + "\n";
+                outboundChannel.Writer.TryWrite(line);
             }
         }
         catch

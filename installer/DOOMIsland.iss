@@ -1,7 +1,7 @@
 ; DOOM Island — Inno Setup 6 Installer Script
 #define AppName "DOOM Island"
 #ifndef AppVersion
-#define AppVersion "2.5.2"
+#define AppVersion "2.5.3"
 #endif
 #define AppExeName "DOOMIsland.exe"
 

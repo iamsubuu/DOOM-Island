@@ -123,4 +123,87 @@ public sealed class NativeMessagingEndToEndTests
             if (!proc.HasExited) proc.Kill();
         }
     }
+
+    [Fact]
+    public async Task BrowserHostProcess_ShouldBufferEarlyStartupMessagesBeforePipeConnects()
+    {
+        var hostExe = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "NOVAIsland.BrowserHost", "bin", "Debug", "net10.0-windows10.0.19041.0", "NOVAIsland.BrowserHost.exe"));
+
+        Assert.True(File.Exists(hostExe), $"Host exe missing at {hostExe}");
+
+        var pipeName = $"DOOMIsland.EarlyBufferPipe.{Guid.NewGuid():N}";
+        await using var bridge = new BrowserMediaBridgeService(pipeName);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        var connectedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.StateChanged += (_, _) =>
+        {
+            if (bridge.CurrentSession is not null)
+            {
+                connectedTcs.TrySetResult();
+            }
+        };
+
+        var psi = new ProcessStartInfo(hostExe)
+        {
+            Arguments = $"--pipe={pipeName}",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        // Start BrowserHost and send frames BEFORE Named Pipe server even starts listening
+        using var proc = Process.Start(psi)!;
+        try
+        {
+            await NativeMessagingFramer.WriteAsync(proc.StandardInput.BaseStream, new NativeMessageEnvelope
+            {
+                Type = NativeMessageTypes.BrowserConnected,
+                Browser = "Google Chrome",
+                Payload = JsonSerializer.SerializeToElement(new BrowserConnectedPayload
+                {
+                    ExtensionVersion = "2.5.3",
+                    BrowserName = "Google Chrome"
+                }, NativeMessageTypes.JsonOptions)
+            }, cts.Token);
+
+            await NativeMessagingFramer.WriteAsync(proc.StandardInput.BaseStream, new NativeMessageEnvelope
+            {
+                Type = NativeMessageTypes.MediaDetected,
+                Browser = "Google Chrome",
+                TabId = 77,
+                WindowId = 1,
+                Payload = JsonSerializer.SerializeToElement(new MediaPayload
+                {
+                    Origin = "https://music.youtube.com",
+                    UrlHost = "music.youtube.com",
+                    TabTitle = "Early Buffered Tab",
+                    Title = "Early Buffered Track",
+                    Artist = "Buffered Artist",
+                    PlaybackState = "playing",
+                    IsAudible = true,
+                    IsActiveBrowserTab = true
+                }, NativeMessageTypes.JsonOptions)
+            }, cts.Token);
+
+            await Task.Delay(250, cts.Token);
+            await bridge.StartAsync(cts.Token);
+
+            await connectedTcs.Task.WaitAsync(cts.Token);
+            Assert.True(bridge.IsConnected);
+            Assert.Equal("Google Chrome", bridge.ConnectedBrowserName);
+            Assert.Equal(77, bridge.CurrentSession!.TabId);
+            Assert.Equal("Early Buffered Track", bridge.CurrentSession.Title);
+        }
+        finally
+        {
+            try { proc.StandardInput.Close(); } catch { }
+            if (!proc.HasExited) proc.Kill();
+        }
+    }
 }

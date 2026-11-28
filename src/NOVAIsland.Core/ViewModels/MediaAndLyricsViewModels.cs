@@ -84,15 +84,16 @@ public sealed partial class MusicViewModel : ObservableObject
             var prevTrackKey = LyricsViewModel.BuildTrackKey(CurrentSession);
             IsBrowserConnected = connected;
             ConnectedBrowserName = browserName;
-            CurrentSession = current;
-            LivePositionSeconds = current?.PositionSeconds ?? 0;
-            _lastClockTicks = Stopwatch.GetTimestamp();
 
             BrowserTabs.Clear();
             foreach (var session in sessions)
             {
                 BrowserTabs.Add(session);
             }
+
+            CurrentSession = current;
+            LivePositionSeconds = current?.PositionSeconds ?? 0;
+            _lastClockTicks = Stopwatch.GetTimestamp();
 
             var nextTrackKey = LyricsViewModel.BuildTrackKey(current);
             if (!string.Equals(prevTrackKey, nextTrackKey, StringComparison.Ordinal))
@@ -138,6 +139,12 @@ public sealed partial class MusicViewModel : ObservableObject
 
     [RelayCommand]
     public Task FocusSourceTabAsync() => DispatchCommandAsync(BrowserMediaAction.FocusTab);
+
+    public void SelectSession(int tabId)
+    {
+        LastCommandStatus = null;
+        _bridge.SelectSession(tabId);
+    }
 
     public Task SeekAsync(double positionSeconds)
     {

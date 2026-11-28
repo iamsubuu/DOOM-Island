@@ -42,6 +42,7 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
     private CancellationTokenSource? _cts;
     private string? _lastPaletteSourceUri;
     private string _lastSmtcSnapshotSignature = string.Empty;
+    private int? _selectedTabId;
     private bool _started;
     private bool _smtcReady;
 
@@ -146,7 +147,8 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
                 .OrderByDescending(s => s.PlaybackState == BrowserPlaybackState.Playing)
                 .ThenByDescending(s => s.TabId >= 0)
                 .ThenByDescending(s => s.IsActiveBrowserTab)
-                .ThenByDescending(s => s.LastUpdatedUtc)
+                .ThenBy(s => s.Browser, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(s => s.TabId)
                 .ToList();
         }
     }
@@ -160,14 +162,49 @@ public sealed class CompositeBrowserMediaBridge : IBrowserMediaBridge, IAsyncDis
                 return null;
             }
 
+            var sessions = ActiveSessions;
+            if (_selectedTabId is int selectedId)
+            {
+                var selected = sessions.FirstOrDefault(s => s.TabId == selectedId);
+                if (selected is not null)
+                {
+                    return selected;
+                }
+                _selectedTabId = null;
+            }
+
             var extCurrent = _extensionBridge.CurrentSession;
             if (extCurrent is not null && extCurrent.PlaybackState == BrowserPlaybackState.Playing)
             {
                 return extCurrent;
             }
 
-            return ActiveSessions.FirstOrDefault() ?? extCurrent;
+            return sessions.FirstOrDefault() ?? extCurrent;
         }
+    }
+
+    public bool SelectSession(int tabId)
+    {
+        if (!_settingsProvider().Enabled)
+        {
+            return false;
+        }
+
+        var exists = ActiveSessions.Any(s => s.TabId == tabId);
+        if (!exists)
+        {
+            return false;
+        }
+
+        _selectedTabId = tabId;
+        if (tabId >= 0 && _extensionBridge.SelectSession(tabId))
+        {
+            return true;
+        }
+
+        RaiseStateChanged();
+        _ = EnhanceCurrentSessionAndPaletteAsync();
+        return true;
     }
 
     public event EventHandler? StateChanged;

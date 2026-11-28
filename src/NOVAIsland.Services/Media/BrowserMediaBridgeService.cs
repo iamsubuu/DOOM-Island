@@ -22,6 +22,7 @@ namespace NOVAIsland.Services.Media;
 public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<int, BrowserMediaSession> _sessions = new();
+    private readonly ConcurrentDictionary<int, NamedPipeServerStream> _sessionOwners = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<CommandResultInfo>> _pendingCommands = new();
     private readonly List<NamedPipeServerStream> _connectedClients = [];
     private readonly Lock _clientsLock = new();
@@ -46,7 +47,8 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
         _sessions.Values
             .OrderByDescending(s => s.PlaybackState == BrowserPlaybackState.Playing)
             .ThenByDescending(s => s.IsActiveBrowserTab)
-            .ThenByDescending(s => s.LastUpdatedUtc)
+            .ThenBy(s => s.Browser, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(s => s.TabId)
             .ToList();
 
     public BrowserMediaSession? CurrentSession
@@ -59,6 +61,18 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
             }
             return ActiveSessions.FirstOrDefault();
         }
+    }
+
+    public bool SelectSession(int tabId)
+    {
+        if (!_sessions.ContainsKey(tabId))
+        {
+            return false;
+        }
+
+        _preferredTabId = tabId;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public event EventHandler? StateChanged;
@@ -160,7 +174,10 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
         }
     }
 
-    public void ProcessIncomingEnvelope(NativeMessageEnvelope envelope)
+    public void ProcessIncomingEnvelope(NativeMessageEnvelope envelope) =>
+        ProcessIncomingEnvelope(envelope, ownerClient: null);
+
+    private void ProcessIncomingEnvelope(NativeMessageEnvelope envelope, NamedPipeServerStream? ownerClient)
     {
         ArgumentNullException.ThrowIfNull(envelope);
 
@@ -177,9 +194,17 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
 
             case NativeMessageTypes.BrowserDisconnected:
             {
-                IsConnected = false;
-                _sessions.Clear();
-                _preferredTabId = null;
+                if (ownerClient is not null)
+                {
+                    RemoveSessionsOwnedBy(ownerClient);
+                }
+                else
+                {
+                    IsConnected = false;
+                    _sessions.Clear();
+                    _sessionOwners.Clear();
+                    _preferredTabId = null;
+                }
                 StateChanged?.Invoke(this, EventArgs.Empty);
                 break;
             }
@@ -216,6 +241,10 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
                 };
 
                 _sessions[envelope.TabId] = session;
+                if (ownerClient is not null)
+                {
+                    _sessionOwners[envelope.TabId] = ownerClient;
+                }
                 IsConnected = true;
                 StateChanged?.Invoke(this, EventArgs.Empty);
                 break;
@@ -263,6 +292,7 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
             case NativeMessageTypes.MediaStopped:
             {
                 _sessions.TryRemove(envelope.TabId, out _);
+                _sessionOwners.TryRemove(envelope.TabId, out _);
                 if (_preferredTabId == envelope.TabId) _preferredTabId = null;
                 StateChanged?.Invoke(this, EventArgs.Empty);
                 break;
@@ -335,13 +365,14 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
                 var env = JsonSerializer.Deserialize<NativeMessageEnvelope>(line, NativeMessageTypes.JsonOptions);
                 if (env is not null && !string.IsNullOrWhiteSpace(env.Type))
                 {
-                    ProcessIncomingEnvelope(env);
+                    ProcessIncomingEnvelope(env, server);
                 }
             }
         }
         catch { }
         finally
         {
+            var removedAny = RemoveSessionsOwnedBy(server);
             lock (_clientsLock)
             {
                 _connectedClients.Remove(server);
@@ -349,11 +380,38 @@ public sealed class BrowserMediaBridgeService : IBrowserMediaBridge, IAsyncDispo
                 {
                     IsConnected = false;
                     _sessions.Clear();
-                    StateChanged?.Invoke(this, EventArgs.Empty);
+                    _sessionOwners.Clear();
+                    _preferredTabId = null;
+                    removedAny = true;
                 }
+            }
+            if (removedAny)
+            {
+                StateChanged?.Invoke(this, EventArgs.Empty);
             }
             server.Dispose();
         }
+    }
+
+    private bool RemoveSessionsOwnedBy(NamedPipeServerStream ownerClient)
+    {
+        var removed = false;
+        foreach (var kv in _sessionOwners.ToArray())
+        {
+            if (ReferenceEquals(kv.Value, ownerClient))
+            {
+                _sessionOwners.TryRemove(kv.Key, out _);
+                if (_sessions.TryRemove(kv.Key, out _))
+                {
+                    removed = true;
+                }
+                if (_preferredTabId == kv.Key)
+                {
+                    _preferredTabId = null;
+                }
+            }
+        }
+        return removed;
     }
 
     private static PipeSecurity BuildCurrentUserPipeSecurity()

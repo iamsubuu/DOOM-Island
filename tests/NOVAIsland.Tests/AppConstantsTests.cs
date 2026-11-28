@@ -18,7 +18,7 @@ public sealed class AppConstantsTests
         Assert.Equal("ArcSubash", AppConstants.PublisherName);
         Assert.Equal("ArcSubash.DOOMIsland-DynamicIsland", AppConstants.StorePackageName);
         Assert.Equal("CN=AAFF5C79-617E-404B-893B-24B04B60D21C", AppConstants.StorePackagePublisher);
-        Assert.Equal("2.5.2", AppConstants.AppVersion);
+        Assert.Equal("2.5.3", AppConstants.AppVersion);
         Assert.Equal("com.doomisland.host", AppConstants.NativeMessagingHostName);
 
         var settings = new AppSettings();

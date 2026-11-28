@@ -43,6 +43,31 @@ function sendNative(type, tabId, windowId, payload) {
   }
 }
 
+function syncExistingMediaTabs() {
+  chrome.tabs.query({}, async (tabs) => {
+    if (chrome.runtime.lastError || !Array.isArray(tabs)) return;
+    for (const tab of tabs) {
+      if (!tab.id || !tab.url || (!tab.url.startsWith('http://') && !tab.url.startsWith('https://'))) {
+        continue;
+      }
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'doom_request_snapshot' });
+      } catch {
+        // Tab was open before extension install/reload: inject content.js then request snapshot.
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js'],
+          });
+          await chrome.tabs.sendMessage(tab.id, { type: 'doom_request_snapshot' });
+        } catch {
+          // Restricted pages (e.g. Chrome Web Store) cannot be scripted; ignore cleanly.
+        }
+      }
+    }
+  });
+}
+
 function connectNative() {
   if (!bridgeEnabled || nativePort) return;
   try {
@@ -54,6 +79,8 @@ function connectNative() {
     });
 
     nativePort.onDisconnect.addListener(() => {
+      // Read lastError to prevent Chrome MV3 from logging "Unchecked runtime.lastError" onto the extension Errors badge.
+      void chrome.runtime.lastError;
       handleNativeDisconnect();
     });
 
@@ -62,14 +89,17 @@ function connectNative() {
       browserName: detectBrowserName(),
     });
 
-    // Re-request snapshots from all open tabs after browser restart / SW wakeup
-    chrome.tabs.query({}, (tabs) => {
-      for (const tab of tabs) {
-        if (tab.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
-          chrome.tabs.sendMessage(tab.id, { type: 'doom_request_snapshot' }).catch(() => {});
-        }
+    // Re-publish any cached tabs and inject/query open tabs so multi-tab media syncs immediately.
+    for (const entry of mediaTabs.values()) {
+      if (entry.snapshot) {
+        sendNative('media_detected', entry.tabId, entry.windowId ?? null, {
+          ...entry.snapshot,
+          isAudible: entry.isAudible,
+          isActiveBrowserTab: entry.isActiveBrowserTab,
+        });
       }
-    });
+    }
+    syncExistingMediaTabs();
   } catch {
     scheduleReconnect();
   }
@@ -264,8 +294,15 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
   evaluateActiveTabSwitch();
 });
 
+chrome.runtime.onInstalled.addListener(() => {
+  if (bridgeEnabled) {
+    syncExistingMediaTabs();
+  }
+});
+
 chrome.storage.local.get(['bridgeEnabled'], (res) => {
-  bridgeEnabled = res.bridgeEnabled !== false;
+  if (chrome.runtime.lastError) return;
+  bridgeEnabled = res?.bridgeEnabled !== false;
   if (bridgeEnabled) {
     connectNative();
   }

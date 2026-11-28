@@ -10,7 +10,7 @@
   <Identity
     Name="ArcSubash.DOOMIsland-DynamicIsland"
     Publisher="CN=AAFF5C79-617E-404B-893B-24B04B60D21C"
-    Version="2.5.2.0"
+    Version="2.5.3.0"
     ProcessorArchitecture="x64" />
 
   <Properties>

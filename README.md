@@ -4,7 +4,7 @@
 
 DOOM Island brings an interactive, hardware-accelerated Dynamic Island bar to the top of your Windows display — featuring automatic browser media sync, live WASAPI audio visualization, synchronized LRCLIB lyrics, clipboard history, system controls, timers, activity tracking, and Windows notifications.
 
-> **Publisher:** ArcSubash · **Current Version:** `2.5.2` · **Target OS:** Windows 10 (Build 19041+) & Windows 11 (`x64`)
+> **Publisher:** ArcSubash · **Current Version:** `2.5.3` · **Target OS:** Windows 10 (Build 19041+) & Windows 11 (`x64`)
 
 ---
 

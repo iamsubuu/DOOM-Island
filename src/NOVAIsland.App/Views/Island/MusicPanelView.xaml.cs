@@ -45,6 +45,7 @@ public sealed partial class MusicPanelView : UserControl
                 Refresh();
             }
         });
+        _music.BrowserTabs.CollectionChanged += (_, _) => DispatcherQueue.TryEnqueue(Refresh);
         _system.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshVolume);
         _lyrics.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshGlance);
         Refresh();
@@ -213,28 +214,70 @@ public sealed partial class MusicPanelView : UserControl
         var tabsSnapshot = _music.BrowserTabs.ToList();
         BrowserTabsRow.Visibility = tabsSnapshot.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
 
+        var accentBrush = Application.Current.Resources.TryGetValue("NovaAccentBrush", out var res) && res is Brush b
+            ? b
+            : new SolidColorBrush(Colors.White);
+
         foreach (var tab in tabsSnapshot)
         {
             var active = _music.CurrentSession?.TabId == tab.TabId;
-            var label = string.IsNullOrWhiteSpace(tab.Title) ? tab.UrlHost : tab.Title;
+            var isPlaying = tab.PlaybackState == BrowserPlaybackState.Playing;
+            var rawTitle = !string.IsNullOrWhiteSpace(tab.Title) ? tab.Title : tab.TabTitle;
+            var sourceLabel = !string.IsNullOrWhiteSpace(tab.Browser) ? tab.Browser : tab.UrlHost;
+            var label = string.IsNullOrWhiteSpace(rawTitle) ? sourceLabel : rawTitle;
+            var chipText = string.IsNullOrWhiteSpace(rawTitle)
+                ? sourceLabel
+                : $"{label} · {ShortSourceName(sourceLabel)}";
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+            row.Children.Add(new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                Glyph = isPlaying ? "\uE768" : "\uE769",
+                FontSize = 9,
+                Foreground = active ? accentBrush : new SolidColorBrush(Color.FromArgb(255, 161, 161, 170)),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = chipText,
+                MaxWidth = 185,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            var targetTabId = tab.TabId;
             var btn = new Button
             {
-                Content = new TextBlock
-                {
-                    Text = label,
-                    MaxWidth = 170,
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                },
-                Padding = new Thickness(10, 4, 10, 4),
-                CornerRadius = new CornerRadius(6),
-                FontSize = 11.5,
-                BorderThickness = new Thickness(0),
-                Background = new SolidColorBrush(active ? Color.FromArgb(36, 255, 255, 255) : Color.FromArgb(12, 255, 255, 255)),
-                Foreground = new SolidColorBrush(active ? Colors.White : Color.FromArgb(255, 161, 161, 170))
+                Content = row,
+                Padding = new Thickness(9, 4, 9, 4),
+                CornerRadius = new CornerRadius(7),
+                FontSize = 11,
+                FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal,
+                BorderThickness = new Thickness(1),
+                BorderBrush = active ? accentBrush : new SolidColorBrush(Color.FromArgb(24, 255, 255, 255)),
+                Background = new SolidColorBrush(active ? Color.FromArgb(44, 255, 255, 255) : Color.FromArgb(14, 255, 255, 255)),
+                Foreground = new SolidColorBrush(active ? Colors.White : Color.FromArgb(255, 196, 196, 206))
             };
-            btn.Click += async (_, _) => await _music.FocusSourceTabAsync();
+            ToolTipService.SetToolTip(btn, $"{label} ({sourceLabel}) — Click to control · Double-click to focus");
+            btn.Click += (_, _) => _music.SelectSession(targetTabId);
+            btn.DoubleTapped += async (_, _) =>
+            {
+                _music.SelectSession(targetTabId);
+                await _music.FocusSourceTabAsync();
+            };
             BrowserTabsStrip.Children.Add(btn);
         }
+    }
+
+    private static string ShortSourceName(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return "Media";
+        if (source.Contains("Chrome", StringComparison.OrdinalIgnoreCase)) return "Chrome";
+        if (source.Contains("Edge", StringComparison.OrdinalIgnoreCase)) return "Edge";
+        if (source.Contains("Opera GX", StringComparison.OrdinalIgnoreCase)) return "Opera GX";
+        if (source.Contains("Opera", StringComparison.OrdinalIgnoreCase)) return "Opera";
+        return source;
     }
 
     private void RefreshVolume()

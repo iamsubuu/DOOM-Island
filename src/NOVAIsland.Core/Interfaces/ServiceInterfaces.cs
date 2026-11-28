@@ -13,6 +13,7 @@ public interface IBrowserMediaBridge
     event EventHandler? StateChanged;
 
     Task StartAsync(CancellationToken cancellationToken);
+    bool SelectSession(int tabId);
     Task<CommandResultInfo> SendCommandAsync(int targetTabId, BrowserMediaAction action, double? seekSeconds = null, CancellationToken cancellationToken = default);
 }
 
