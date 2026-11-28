@@ -37,7 +37,7 @@ DOOM Island brings an interactive, hardware-accelerated Dynamic Island bar to th
 
 Download the latest release from the **[GitHub Releases](https://github.com/iamsubuu/DOOM-Island/releases)** page:
 
-### Option 1 — Standalone Windows Installer (Recommended for Direct Download)
+### Standalone Windows Installer (Recommended for Direct Download)
 1. Download `DOOMIsland-Setup-x64-v<version>.exe`.
 2. Run the installer (GUI wizard, or silent install with `/SILENT /NOLAUNCH /DIR="<path>"`).
 3. It installs DOOM Island, creates Start Menu/Desktop shortcuts, registers Add/Remove Programs uninstall support, and configures Native Messaging for Chrome, Edge, and Opera.
